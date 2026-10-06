@@ -21,3 +21,8 @@ __pycache__/
 *.token
 .env*
 localization_config.json
+
+!/tests/
+!/packaging/
+!/docs/
+!/pyproject.toml

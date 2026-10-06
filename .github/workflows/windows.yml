@@ -22,8 +22,21 @@ jobs:
         shell: pwsh
         run: |
           $env:PYTHONIOENCODING = 'utf-8'
-          ./.venv/Scripts/python.exe -m unittest discover -s src -p 'test_*.py'
+          ./.venv/Scripts/python.exe -m unittest discover -s tests -t . -p 'test_*.py'
           if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
+      - name: Check Python formatting
+        shell: pwsh
+        run: |
+          ./.venv/Scripts/python.exe -m black --check src tests tools packaging/LocalizationStudio.spec
+          if ($LASTEXITCODE -ne 0) { throw 'Formatting failed' }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check UI formatting
+        shell: pwsh
+        run: |
+          ./.venv/Scripts/python.exe tools/format_ui.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'UI formatting failed' }
       - name: Build
         shell: pwsh
         run: ./build.ps1

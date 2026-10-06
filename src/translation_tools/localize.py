@@ -15,8 +15,12 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from local_editor import reference_examples, refusal_error, register_error, review_entries
-
+from local_editor import (
+    reference_examples,
+    refusal_error,
+    register_error,
+    review_entries,
+)
 
 CYRILLIC_RE = re.compile(r"[А-Яа-яЁё]")
 MIXED_ALPHABET_RE = re.compile(r"(?:[А-Яа-яЁё][A-Za-z]|[A-Za-z][А-Яа-яЁё])")
@@ -117,7 +121,9 @@ def format_project_rules(rules: dict) -> str:
         lines.append("- Персонажи (speaker -> обязательное описание):")
         for speaker, description in speakers.items():
             if isinstance(description, dict):
-                rendered = ", ".join(f"{key}={value}" for key, value in description.items())
+                rendered = ", ".join(
+                    f"{key}={value}" for key, value in description.items()
+                )
             else:
                 rendered = str(description)
             lines.append(f"  - {speaker}: {rendered}")
@@ -142,15 +148,32 @@ def format_project_rules(rules: dict) -> str:
     return "\n".join(lines)
 
 
-def build_system_prompt(mode: str, rules: dict, profile: dict | None = None, entries: list | None = None) -> str:
-    base = (profile or {}).get(f"{mode}_prompt") or (SYSTEM_TRANSLATE if mode == "translate" else SYSTEM_REVIEW)
+def build_system_prompt(
+    mode: str, rules: dict, profile: dict | None = None, entries: list | None = None
+) -> str:
+    base = (profile or {}).get(f"{mode}_prompt") or (
+        SYSTEM_TRANSLATE if mode == "translate" else SYSTEM_REVIEW
+    )
     retry_rule = (
         "Если payload содержит validation_feedback, исправь перечисленные технические ошибки "
         "и снова верни все находящиеся в items id. Не переводи и не меняй токены."
     )
-    examples = reference_examples(profile or {}, entries or []) if entries else (profile or {}).get("editorial_examples", [])
-    rendered = "\n".join(f"- {x['english']} -> {x['russian']} ({x['lesson']})" for x in examples)
-    return base + "\n\n" + format_project_rules(rules) + ("\n\nПримеры редактуры:\n" + rendered if rendered else "") + "\n\n" + retry_rule
+    examples = (
+        reference_examples(profile or {}, entries or [])
+        if entries
+        else (profile or {}).get("editorial_examples", [])
+    )
+    rendered = "\n".join(
+        f"- {x['english']} -> {x['russian']} ({x['lesson']})" for x in examples
+    )
+    return (
+        base
+        + "\n\n"
+        + format_project_rules(rules)
+        + ("\n\nПримеры редактуры:\n" + rendered if rendered else "")
+        + "\n\n"
+        + retry_rule
+    )
 
 
 @functools.lru_cache(maxsize=20)
@@ -171,15 +194,20 @@ def source_scene_map(path: Path) -> dict[int, tuple]:
         else:
             while scopes and scopes[-1][0] >= indent:
                 scopes.pop()
-            if text.endswith(":") and (re.match(r"(?:if|elif|else|menu)\b", text) or text.startswith(('"', "'"))):
+            if text.endswith(":") and (
+                re.match(r"(?:if|elif|else|menu)\b", text)
+                or text.startswith(('"', "'"))
+            ):
                 scopes.append((indent, number))
         result[number] = (label, tuple(number for _, number in scopes))
     return result
 
 
-def context_neighbors(records: list[dict], position: int, count: int, scene_boundaries: bool = False) -> tuple[list[dict], list[dict]]:
-    before = records[max(0, position-count):position]
-    after = records[position+1:position+1+count]
+def context_neighbors(
+    records: list[dict], position: int, count: int, scene_boundaries: bool = False
+) -> tuple[list[dict], list[dict]]:
+    before = records[max(0, position - count) : position]
+    after = records[position + 1 : position + 1 + count]
     if scene_boundaries:
         scene = records[position].get("scene")
         contiguous_before = []
@@ -252,9 +280,15 @@ def find_records(path: Path) -> list[dict]:
         reference = re.match(r"# (game/[^:]+):(\d+)\s*$", stripped)
         if reference:
             source_line = int(reference.group(2))
-            game_directory = next((parent for parent in path.parents if parent.name == "game"), None)
-            source_path = (game_directory.parent if game_directory else path.parents[3]) / reference.group(1)
-            scene = source_scene_map(source_path).get(source_line, (reference.group(1), ()))
+            game_directory = next(
+                (parent for parent in path.parents if parent.name == "game"), None
+            )
+            source_path = (
+                game_directory.parent if game_directory else path.parents[3]
+            ) / reference.group(1)
+            scene = source_scene_map(source_path).get(
+                source_line, (reference.group(1), ())
+            )
 
         if stripped.startswith("translate "):
             pending_comments = []
@@ -287,7 +321,9 @@ def find_records(path: Path) -> list[dict]:
         if source is None or speaker in NON_DIALOGUE_SPEAKERS:
             continue
 
-        newline = "\r\n" if raw.endswith("\r\n") else ("\n" if raw.endswith("\n") else "")
+        newline = (
+            "\r\n" if raw.endswith("\r\n") else ("\n" if raw.endswith("\n") else "")
+        )
         records.append(
             {
                 "line": index,
@@ -306,7 +342,11 @@ def find_records(path: Path) -> list[dict]:
 
 
 def stable_key(relative: str, record: dict, mode: str, model: str) -> str:
-    material = record["source"] if mode == "translate" else record["source"] + "\0" + record["current"]
+    material = (
+        record["source"]
+        if mode == "translate"
+        else record["source"] + "\0" + record["current"]
+    )
     digest = hashlib.sha1(material.encode("utf-8")).hexdigest()[:12]
     return f"{mode}:{model}:{relative}:{record['line'] + 1}:{digest}"
 
@@ -327,7 +367,9 @@ def validate(source: str, translated: str) -> str | None:
     return None
 
 
-def validate_quality(source: str, translated: str, rules: dict | None = None) -> str | None:
+def validate_quality(
+    source: str, translated: str, rules: dict | None = None
+) -> str | None:
     error = validate(source, translated)
     if error:
         return error
@@ -385,7 +427,9 @@ def ollama_chat(
     with OLLAMA_OPENER.open(request, timeout=timeout) as response:
         outer = json.loads(response.read().decode("utf-8"))
     if outer.get("done_reason") == "length":
-        raise ValueError("Ollama response was truncated; reduce chunk size or increase context")
+        raise ValueError(
+            "Ollama response was truncated; reduce chunk size or increase context"
+        )
     content = outer["message"]["content"]
     try:
         return json.loads(content)
@@ -425,16 +469,22 @@ def load_cache(path: Path) -> dict[str, str]:
 def save_json_atomic(path: Path, value: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.write_text(
+        json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
     os.replace(temporary, path)
 
 
-def update_file(path: Path, replacements: dict[int, str], records_by_line: dict[int, dict]) -> None:
+def update_file(
+    path: Path, replacements: dict[int, str], records_by_line: dict[int, dict]
+) -> None:
     lines = path.read_text(encoding="utf-8-sig").splitlines(keepends=True)
     for line_number, translated in replacements.items():
         record = records_by_line[line_number]
         literal = json.dumps(translated, ensure_ascii=False)
-        lines[line_number] = record["prefix"] + literal + record["suffix"] + record["newline"]
+        lines[line_number] = (
+            record["prefix"] + literal + record["suffix"] + record["newline"]
+        )
     temporary = path.with_suffix(path.suffix + ".tmp")
     temporary.write_text("".join(lines), encoding="utf-8", newline="")
     os.replace(temporary, path)
@@ -462,7 +512,11 @@ def process_file(
             cache[key] = record["current"]
             continue
         source_tokens = TOKEN_RE.findall(record["source"])
-        if mode == "translate" and len(source_tokens) == 1 and source_tokens[0] == record["source"].strip():
+        if (
+            mode == "translate"
+            and len(source_tokens) == 1
+            and source_tokens[0] == record["source"].strip()
+        ):
             cache[key] = record["current"]
             continue
         if key in cache:
@@ -509,18 +563,32 @@ def process_file(
                     "english": record["source"],
                 }
                 position = record_positions[record["line"]]
-                before, after = context_neighbors(records, position, args.context_lines, args.profile_data.get("scene_boundaries", False))
+                before, after = context_neighbors(
+                    records,
+                    position,
+                    args.context_lines,
+                    args.profile_data.get("scene_boundaries", False),
+                )
                 if args.profile_data:
                     entry["scene"] = record["scene"][0]
-                    entry["speaker_role"] = args.project_rules.get("speakers", {}).get(record["speaker"], {})
+                    entry["speaker_role"] = args.project_rules.get("speakers", {}).get(
+                        record["speaker"], {}
+                    )
 
                 def context_entry(neighbor: dict) -> dict:
-                    value = {"speaker": neighbor["speaker"], "english": neighbor["source"]}
-                    if args.profile_data.get("include_russian_context", True) and CYRILLIC_RE.search(neighbor["current"]):
+                    value = {
+                        "speaker": neighbor["speaker"],
+                        "english": neighbor["source"],
+                    }
+                    if args.profile_data.get(
+                        "include_russian_context", True
+                    ) and CYRILLIC_RE.search(neighbor["current"]):
                         value["russian"] = neighbor["current"]
                     return value
 
-                entry["context_before"] = [context_entry(neighbor) for neighbor in before]
+                entry["context_before"] = [
+                    context_entry(neighbor) for neighbor in before
+                ]
                 entry["context_after"] = [context_entry(neighbor) for neighbor in after]
                 if mode == "review":
                     entry["russian"] = record["current"]
@@ -534,7 +602,9 @@ def process_file(
             successful_response = False
 
             for attempt in range(1, args.retries + 1):
-                retry_entries = [entries_by_id[item_id] for item_id in sorted(remaining_ids)]
+                retry_entries = [
+                    entries_by_id[item_id] for item_id in sorted(remaining_ids)
+                ]
                 payload = {"file": relative, "mode": mode, "items": retry_entries}
                 if feedback:
                     payload["validation_feedback"] = [
@@ -548,31 +618,87 @@ def process_file(
                         f"items={len(retry_entries)}",
                         flush=True,
                     )
+
                     def local_call(stage, stage_entries):
-                        stage_payload = {**payload, "mode": stage, "items": stage_entries}
+                        stage_payload = {
+                            **payload,
+                            "mode": stage,
+                            "items": stage_entries,
+                        }
                         return ollama_chat(
-                            args.model, build_system_prompt(stage, args.project_rules, args.profile_data, stage_entries),
-                            stage_payload, args.timeout, args.think, args.num_ctx, args.keep_alive,
-                            {"temperature": args.temperature, **({"seed": args.seed} if args.seed is not None else {}),
-                             **args.profile_data.get("sampling_options", {})})
+                            args.model,
+                            build_system_prompt(
+                                stage,
+                                args.project_rules,
+                                args.profile_data,
+                                stage_entries,
+                            ),
+                            stage_payload,
+                            args.timeout,
+                            args.think,
+                            args.num_ctx,
+                            args.keep_alive,
+                            {
+                                "temperature": args.temperature,
+                                **(
+                                    {"seed": args.seed} if args.seed is not None else {}
+                                ),
+                                **args.profile_data.get("sampling_options", {}),
+                            },
+                        )
 
                     def trace_review(event):
-                        args.review_pending = getattr(args, "review_pending", 0) + (event['status'] in {'uncertain', 'rejected'})
-                        journal = args.root / "translation_tools" / f"decisions-{args.profile_data['name']}.jsonl"
+                        args.review_pending = getattr(args, "review_pending", 0) + (
+                            event["status"] in {"uncertain", "rejected"}
+                        )
+                        journal = (
+                            args.root
+                            / "translation_tools"
+                            / f"decisions-{args.profile_data['name']}.jsonl"
+                        )
                         journal.parent.mkdir(parents=True, exist_ok=True)
-                        record = uncached[event['id'] - 1]
+                        record = uncached[event["id"] - 1]
                         with journal.open("a", encoding="utf-8") as output:
-                            output.write(json.dumps({"file": relative, "line": record['line'] + 1, **event}, ensure_ascii=False) + "\n")
+                            output.write(
+                                json.dumps(
+                                    {
+                                        "file": relative,
+                                        "line": record["line"] + 1,
+                                        **event,
+                                    },
+                                    ensure_ascii=False,
+                                )
+                                + "\n"
+                            )
 
-                    if mode == "review" and args.profile_data.get("review_strategy") == "critic-rewrite-verify":
-                        response = review_entries(retry_entries, local_call,
-                            lambda source, text: validate_quality(source, text, args.project_rules), trace_review)
+                    if (
+                        mode == "review"
+                        and args.profile_data.get("review_strategy")
+                        == "critic-rewrite-verify"
+                    ):
+                        response = review_entries(
+                            retry_entries,
+                            local_call,
+                            lambda source, text: validate_quality(
+                                source, text, args.project_rules
+                            ),
+                            trace_review,
+                        )
                     else:
                         response = local_call(mode, retry_entries)
                     successful_response = True
-                except (OSError, urllib.error.URLError, json.JSONDecodeError, KeyError, ValueError) as error:
+                except (
+                    OSError,
+                    urllib.error.URLError,
+                    json.JSONDecodeError,
+                    KeyError,
+                    ValueError,
+                ) as error:
                     last_error = error
-                    print(f"  batch {batch_number}: retry {attempt}/{args.retries}: {error}", flush=True)
+                    print(
+                        f"  batch {batch_number}: retry {attempt}/{args.retries}: {error}",
+                        flush=True,
+                    )
                     time.sleep(min(attempt * 2, 8))
                     continue
 
@@ -582,8 +708,14 @@ def process_file(
                     for item in returned
                     if isinstance(item, dict)
                 }
-                id_counts = collections.Counter(item.get("id") for item in returned if isinstance(item, dict))
-                reasons = {item.get("id"): item.get("reason", "") for item in returned if isinstance(item, dict)}
+                id_counts = collections.Counter(
+                    item.get("id") for item in returned if isinstance(item, dict)
+                )
+                reasons = {
+                    item.get("id"): item.get("reason", "")
+                    for item in returned
+                    if isinstance(item, dict)
+                }
                 next_remaining: set[int] = set()
                 next_feedback: dict[int, str] = {}
                 for item_id in sorted(remaining_ids):
@@ -593,8 +725,15 @@ def process_file(
                         next_feedback[item_id] = "missing id or text is not a string"
                         continue
                     record = uncached[item_id - 1]
-                    error = validate_quality(record["source"], translated, args.project_rules)
-                    if mode == "review" and args.profile_data.get("require_edit_reason") and translated != record["current"] and not str(reasons.get(item_id, "")).strip():
+                    error = validate_quality(
+                        record["source"], translated, args.project_rules
+                    )
+                    if (
+                        mode == "review"
+                        and args.profile_data.get("require_edit_reason")
+                        and translated != record["current"]
+                        and not str(reasons.get(item_id, "")).strip()
+                    ):
                         error = "changed translation without a specific edit reason"
                     if error:
                         next_remaining.add(item_id)
@@ -605,10 +744,31 @@ def process_file(
                         )
                         continue
                     accepted[item_id] = translated
-                    if mode == "review" and args.profile_data and translated != record["current"]:
-                        journal = args.root / "translation_tools" / f"editorial-{args.profile_data['name']}.jsonl"
+                    if (
+                        mode == "review"
+                        and args.profile_data
+                        and translated != record["current"]
+                    ):
+                        journal = (
+                            args.root
+                            / "translation_tools"
+                            / f"editorial-{args.profile_data['name']}.jsonl"
+                        )
                         with journal.open("a", encoding="utf-8") as output:
-                            output.write(json.dumps({"file": relative, "line": record["line"] + 1, "source": record["source"], "before": record["current"], "after": translated, "reason": reasons.get(item_id, "")}, ensure_ascii=False) + "\n")
+                            output.write(
+                                json.dumps(
+                                    {
+                                        "file": relative,
+                                        "line": record["line"] + 1,
+                                        "source": record["source"],
+                                        "before": record["current"],
+                                        "after": translated,
+                                        "reason": reasons.get(item_id, ""),
+                                    },
+                                    ensure_ascii=False,
+                                )
+                                + "\n"
+                            )
 
                 remaining_ids = next_remaining
                 feedback = next_feedback
@@ -638,7 +798,9 @@ def process_file(
                 cache[record["key"]] = translated
                 if args.profile_data and mode == "review":
                     updated_record = {**record, "current": translated}
-                    cache[stable_key(relative, updated_record, mode, args.cache_signature)] = translated
+                    cache[
+                        stable_key(relative, updated_record, mode, args.cache_signature)
+                    ] = translated
 
             for item_id in sorted(remaining_ids):
                 record = uncached[item_id - 1]
@@ -711,7 +873,11 @@ def run_model_mode(
             if not record["source"].strip():
                 continue
             source_tokens = TOKEN_RE.findall(record["source"])
-            if mode == "translate" and len(source_tokens) == 1 and source_tokens[0] == record["source"].strip():
+            if (
+                mode == "translate"
+                and len(source_tokens) == 1
+                and source_tokens[0] == record["source"].strip()
+            ):
                 continue
             if key in cache and cache[key] == record["current"]:
                 continue
@@ -724,7 +890,12 @@ def run_model_mode(
 
     if args.limit is not None:
         pending = min(pending, args.limit)
-    progress = {"total": pending, "attempted": 0, "accepted": 0, "started": time.monotonic()}
+    progress = {
+        "total": pending,
+        "attempted": 0,
+        "accepted": 0,
+        "started": time.monotonic(),
+    }
     print(
         f"START mode={mode} model={args.model} files={len(files)} pending={pending} "
         f"num_ctx={args.num_ctx} context_lines={args.context_lines}",
@@ -733,10 +904,15 @@ def run_model_mode(
     total = 0
     changed = 0
     for path in files:
-        file_total, file_changed = process_file(path, tl_root, cache, cache_path, args, progress)
+        file_total, file_changed = process_file(
+            path, tl_root, cache, cache_path, args, progress
+        )
         total += file_total
         changed += file_changed
-    print(f"DONE mode={mode} files={len(files)} records={total} changed={changed}", flush=True)
+    print(
+        f"DONE mode={mode} files={len(files)} records={total} changed={changed}",
+        flush=True,
+    )
     return total, changed
 
 
@@ -745,23 +921,45 @@ def main() -> int:
         description="Context-aware Ren'Py translation, editorial review, and static QA."
     )
     parser.add_argument("mode", choices=("translate", "review", "pipeline", "qa"))
-    parser.add_argument("--root", type=Path, required=True, help="Game root; must contain game/tl/russian")
+    parser.add_argument(
+        "--root",
+        type=Path,
+        required=True,
+        help="Game root; must contain game/tl/russian",
+    )
     parser.add_argument("--model", default="qwen3.8:latest")
     parser.add_argument("--config", type=Path, help="Project-specific JSON rules")
-    parser.add_argument("--profile", type=Path, default=Path(__file__).with_name("local_literary_profile.json"), help="Shared default profile; separate caches")
+    parser.add_argument(
+        "--profile",
+        type=Path,
+        default=Path(__file__).with_name("local_literary_profile.json"),
+        help="Shared default profile; separate caches",
+    )
     parser.add_argument("--temperature", type=float, default=0.08)
     parser.add_argument("--seed", type=int)
-    parser.add_argument("--include", action="append", help="Glob relative to game/tl/russian")
-    parser.add_argument("--limit", type=int, help="Maximum pending records per model stage (control runs)")
+    parser.add_argument(
+        "--include", action="append", help="Glob relative to game/tl/russian"
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        help="Maximum pending records per model stage (control runs)",
+    )
     parser.add_argument("--chunk-items", type=int, default=4)
     parser.add_argument("--chunk-chars", type=int, default=2800)
     parser.add_argument("--context-lines", type=int, default=3)
     parser.add_argument("--timeout", type=int, default=900)
     parser.add_argument("--retries", type=int, default=3)
     parser.add_argument("--num-ctx", type=int, default=8192)
-    parser.add_argument("--keep-alive", default="5m", help="How long Ollama keeps the model loaded")
-    parser.add_argument("--force", action="store_true", help="Translate existing Russian records again")
-    parser.add_argument("--think", action="store_true", help="Enable model reasoning when supported")
+    parser.add_argument(
+        "--keep-alive", default="5m", help="How long Ollama keeps the model loaded"
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="Translate existing Russian records again"
+    )
+    parser.add_argument(
+        "--think", action="store_true", help="Enable model reasoning when supported"
+    )
     args = parser.parse_args()
     args.root = args.root.resolve()
     args.profile_data = load_project_rules(args.profile)
@@ -769,16 +967,30 @@ def main() -> int:
         parser.error(f"profile not found: {args.profile}")
     if args.profile_data:
         if not re.fullmatch(r"[a-zA-Z0-9_-]+", args.profile_data.get("name", "")):
-            parser.error("profile name must contain only letters, digits, underscore or hyphen")
+            parser.error(
+                "profile name must contain only letters, digits, underscore or hyphen"
+            )
         for name, value in args.profile_data.get("parameters", {}).items():
-            if name not in {"num_ctx", "context_lines", "chunk_items", "chunk_chars", "temperature", "seed"}:
+            if name not in {
+                "num_ctx",
+                "context_lines",
+                "chunk_items",
+                "chunk_chars",
+                "temperature",
+                "seed",
+            }:
                 parser.error(f"unknown profile parameter: {name}")
             flag = f"--{name.replace('_', '-')}"
-            if not any(argument == flag or argument.startswith(flag + "=") for argument in sys.argv):
+            if not any(
+                argument == flag or argument.startswith(flag + "=")
+                for argument in sys.argv
+            ):
                 setattr(args, name, value)
 
     if args.chunk_items < 1 or args.chunk_chars < 200 or args.context_lines < 0:
-        parser.error("chunk-items must be >= 1, chunk-chars >= 200, and context-lines >= 0")
+        parser.error(
+            "chunk-items must be >= 1, chunk-chars >= 200, and context-lines >= 0"
+        )
     if args.limit is not None and args.limit < 1:
         parser.error("limit must be >= 1")
 
@@ -786,29 +998,67 @@ def main() -> int:
     if not tl_root.is_dir():
         parser.error(f"translation directory not found: {tl_root}")
 
-    config_path = args.config or (args.root / "translation_tools" / "localization_config.json")
+    config_path = args.config or (
+        args.root / "translation_tools" / "localization_config.json"
+    )
     if args.config is not None and not config_path.is_file():
         parser.error(f"project rules not found: {config_path}")
     try:
-        args.project_rules = load_project_rules(config_path if config_path.is_file() else None)
+        args.project_rules = load_project_rules(
+            config_path if config_path.is_file() else None
+        )
     except (OSError, json.JSONDecodeError, ValueError) as error:
         parser.error(str(error))
     rules_material = json.dumps(args.project_rules, ensure_ascii=False, sort_keys=True)
     rules_digest = hashlib.sha1(rules_material.encode("utf-8")).hexdigest()[:10]
     args.cache_signature = f"{args.model}:{PROMPT_VERSION}:{rules_digest}"
     if args.profile_data:
-        material = {"profile": args.profile_data, "rules": args.project_rules,
-                    "settings": {key: getattr(args, key) for key in ("num_ctx", "context_lines", "chunk_items", "chunk_chars", "temperature", "seed", "think")}}
-        material['engine_hashes'] = {name: hashlib.sha256(Path(__file__).with_name(name).read_bytes()).hexdigest() for name in ('localize.py', 'local_editor.py')}
+        material = {
+            "profile": args.profile_data,
+            "rules": args.project_rules,
+            "settings": {
+                key: getattr(args, key)
+                for key in (
+                    "num_ctx",
+                    "context_lines",
+                    "chunk_items",
+                    "chunk_chars",
+                    "temperature",
+                    "seed",
+                    "think",
+                )
+            },
+        }
+        material["engine_hashes"] = {
+            name: hashlib.sha256(
+                Path(__file__).with_name(name).read_bytes()
+            ).hexdigest()
+            for name in ("localize.py", "local_editor.py")
+        }
         request = urllib.request.Request("http://127.0.0.1:11434/api/tags")
         if args.mode != "qa":
             with OLLAMA_OPENER.open(request, timeout=10) as response:
                 tags = json.load(response).get("models", [])
-            material["model_digest"] = next((x.get("digest") for x in tags if x.get("name") == args.model), args.model)
-        args.cache_signature += ":" + hashlib.sha256(json.dumps(material, sort_keys=True, ensure_ascii=False).encode()).hexdigest()[:16]
+            material["model_digest"] = next(
+                (x.get("digest") for x in tags if x.get("name") == args.model),
+                args.model,
+            )
+        args.cache_signature += (
+            ":"
+            + hashlib.sha256(
+                json.dumps(material, sort_keys=True, ensure_ascii=False).encode()
+            ).hexdigest()[:16]
+        )
 
     patterns = args.include or ["**/*.rpy"]
-    files = sorted({path for pattern in patterns for path in tl_root.glob(pattern) if path.is_file()})
+    files = sorted(
+        {
+            path
+            for pattern in patterns
+            for path in tl_root.glob(pattern)
+            if path.is_file()
+        }
+    )
     print(
         f"CONFIG path={config_path if config_path.is_file() else 'none'} "
         f"prompt={PROMPT_VERSION} rules={rules_digest} "
@@ -822,13 +1072,21 @@ def main() -> int:
     requested_mode = args.mode
     args.unresolved = 0
     args.review_pending = 0
-    modes = ("translate", "review") if requested_mode == "pipeline" else (requested_mode,)
+    modes = (
+        ("translate", "review") if requested_mode == "pipeline" else (requested_mode,)
+    )
     for mode in modes:
         run_model_mode(mode, files, tl_root, args)
-    print(f"LOCAL REVIEW pending={args.review_pending}; inspect decisions journal for uncertain/rejected edits", flush=True)
+    print(
+        f"LOCAL REVIEW pending={args.review_pending}; inspect decisions journal for uncertain/rejected edits",
+        flush=True,
+    )
 
     if args.profile_data and args.unresolved:
-        print(f"INCOMPLETE unresolved={args.unresolved}; rerun to retry skipped records", flush=True)
+        print(
+            f"INCOMPLETE unresolved={args.unresolved}; rerun to retry skipped records",
+            flush=True,
+        )
         return 2
 
     if requested_mode == "pipeline":

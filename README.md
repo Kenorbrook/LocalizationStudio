@@ -113,7 +113,7 @@ py -3.12 -m venv .venv
 
 ```powershell
 $env:PYTHONIOENCODING = 'utf-8'
-.\.venv\Scripts\python.exe -m unittest discover -s src -p 'test_*.py'
+.\.venv\Scripts\python.exe -m unittest discover -s tests -t . -p 'test_*.py'
 ```
 
 После сборки интерфейс EXE можно проверить на отдельном проекте с нейтральными фразами:
@@ -135,7 +135,16 @@ $env:PYTHONIOENCODING = 'utf-8'
 Результат: `release/LocalizationStudio/`. Распространять всю папку.
 На момент первого релиза проходят 135 автоматических тестов; интерфейс собранного EXE дополнительно проверен на нейтральном тестовом корпусе.
 
-`src/desktop.py` — Windows/WebView2; `src/app.py` — локальный API; `src/core.py` — SQLite и версии строк; `src/worker.py` — возобновляемая очередь; `src/providers.py` — подключения моделей; `src/translation_tools/` — литературные правила и вспомогательный Ren’Py CLI.
+Исходники приложения находятся в `src/`, интерфейс — в `src/ui/`, обработчики команд — в `src/commands/`. Тесты вынесены в `tests/`, описание сборки — в `packaging/`, документация — в `docs/`. Подробные границы модулей и оставшиеся ограничения: [архитектура](docs/ARCHITECTURE.md), [ревью кода](docs/CODE_REVIEW.md).
+
+Форматирование проверяется в CI. Локальные команды:
+
+```powershell
+.\.venv\Scripts\python.exe -m black --check src tests tools packaging/LocalizationStudio.spec
+.\.venv\Scripts\python.exe tools\format_ui.py --check
+```
+
+Для форматирования UI нужен Node.js; первая загрузка закреплённой версии Prettier требует интернета. Он используется только при разработке и не входит в зависимости приложения.
 
 CLI `src/translation_tools/run_translation.ps1` предназначен для отдельно подготовленного Ren’Py слоя `game/tl/russian`. Он открывает видимое окно PowerShell; для обычного приложения используется прогресс внутри окна.
 

@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="ru">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width, initial-scale=1"
+  /><title>Localization Studio</title>
+  <link rel="stylesheet" href="/studio.css" />
+  <header>
+    <div class="brand">
+      Localization Studio<small>МАСТЕРСКАЯ ПЕРЕВОДА ИГР</small>
+    </div>
+    <div class="flex">
+      <span id="connection" class="sub">Локальный режим</span
+      ><button id="newProject">+ Открыть проект</button
+      ><button id="errorsButton">Ошибки · 0</button>
+    </div>
+  </header>
+  <main>
+    <aside>
+      <label class="sub">ПРОЕКТ</label
+      ><select id="projects" class="full" style="margin-top: 10px"></select>
+      <h2>Файлы и блоки</h2>
+      <div id="files"></div>
+      <button id="importButton" class="full">+ Догрузить текст</button>
+      <p class="sub">
+        Каждый файл открывается блоками по 50 строк. Повторный импорт сохраняет
+        ваши правки.
+      </p>
+      <details>
+        <summary>Подключить MCP</summary>
+        <p class="sub">
+          Внешняя ИИ получает инструменты чтения, предложений правок и проверки
+          строк. Изменения появляются здесь.
+        </p>
+        <button id="mcpButton">Инструкция и конфигурация</button>
+      </details>
+    </aside>
+    <section class="center">
+      <div class="sub" id="breadcrumb">ВАШИ ПРОЕКТЫ / ТЕКСТ</div>
+      <h1 id="fileTitle" style="margin-top: 10px">
+        Перевод под вашим контролем
+      </h1>
+      <div class="sub" id="description">
+        Откройте папку игры или добавьте текстовый файл.
+      </div>
+      <div class="stats" id="stats"></div>
+      <div class="flex toolbar">
+        <input
+          id="search"
+          class="grow"
+          placeholder="Найти в оригинале или переводе"
+        /><select id="status">
+          <option value="">Все этапы</option>
+          <option value="empty">Без перевода</option>
+          <option value="translated">● Только перевод</option>
+          <option value="edited">● После редакции</option>
+          <option value="verified">● Проверено</option>
+          <option value="preserved">Сохранено без перевода</option></select
+        ><button id="exportButton">Экспорт файла</button>
+      </div>
+      <div class="flex pagination">
+        <button id="prev">← Предыдущий блок</button
+        ><span id="pageInfo" class="sub"></span
+        ><button id="next">Следующий блок →</button>
+      </div>
+      <div id="rows">
+        <div class="empty">
+          Текст появится здесь после импорта.<br />Оригинал слева, редактируемый
+          перевод справа.
+        </div>
+      </div>
+    </section>
+    <aside class="right">
+      <div class="flex">
+        <strong class="grow">Очередь обработки</strong
+        ><span class="badge" id="jobState">Нет задачи</span>
+      </div>
+      <progress id="progress" value="0" max="1"></progress>
+      <div class="sub" id="progressText">Готово к работе</div>
+      <div id="live" class="live">
+        <label>СЕЙЧАС В РАБОТЕ</label>Здесь будут оригинал и результат текущей
+        строки.
+      </div>
+      <div class="flex wrap">
+        <button id="pause">Пауза</button><button id="resume">Продолжить</button
+        ><button id="cancel">Отменить задачу</button>
+      </div>
+      <details id="logDetails">
+        <summary>Журнал текущей задачи</summary>
+        <pre id="jobLog" aria-label="Журнал задачи"></pre>
+      </details>
+      <h2>Настройки перевода</h2>
+      <label>Локальная модель</label
+      ><select id="model">
+        <option>qwen3.8:latest</option></select
+      ><label>Контекст, токенов</label
+      ><input id="context" type="number" value="8192" min="1024" max="131072" />
+      <div class="flex">
+        <div class="grow">
+          <label>С языка</label><input id="source_language" value="English" />
+        </div>
+        <div class="grow">
+          <label>На язык</label><input id="target_language" value="Russian" />
+        </div>
+      </div>
+      <label>Область обработки</label
+      ><select id="scope">
+        <option value="project">Весь проект</option>
+        <option value="file">Открытый файл</option></select
+      ><label>Кто выполняет выбранный этап</label
+      ><select id="provider">
+        <option value="local">Локальная ИИ</option>
+        <option value="cloud">Облачная ИИ</option></select
+      ><button class="full primary" data-stage="translate">
+        1. Перевести оставшееся</button
+      ><button class="full" data-stage="review">2. Литературная редакция</button
+      ><button class="full" data-stage="cloud">3. Облачная проверка</button
+      ><button class="full" id="retry">Повторить ошибки этапа</button>
+      <details>
+        <summary>Облачное подключение</summary>
+        <label>HTTPS API URL, включая /v1</label
+        ><input id="endpoint" placeholder="https://provider.example/v1" /><label
+          >Название облачной модели</label
+        ><input
+          id="cloud_model"
+          placeholder="Название модели провайдера"
+        /><label>API-ключ</label
+        ><input
+          id="apiKey"
+          type="password"
+          autocomplete="new-password"
+          placeholder="Хранится в Windows Credential Manager"
+        /><label>Максимум запросов на запуск</label
+        ><input id="max_calls" type="number" value="1000" min="1" /><label
+          >Максимум токенов ответа</label
+        ><input id="max_output" type="number" value="1200" min="100" /><button
+          id="saveSettings"
+          class="full"
+        >
+          Сохранить настройки
+        </button>
+        <p class="sub">
+          API с совместимым Chat Completions. Облако включается только выбранной
+          командой. Ключ не сохраняется в базе или журнале.
+        </p>
+      </details>
+    </aside>
+  </main>
+  <dialog id="projectDialog">
+    <h1>Открыть проект</h1>
+    <p class="sub">
+      Путь к папке одной игры. Определим движок и расположение текста без
+      интернета. Доступные сценарии Ren’Py соберём автоматически; для остальных
+      форматов покажем отчёт. Архивы не распаковываются.
+    </p>
+    <input id="rootPath" placeholder="A:\Games\MyGame" /><label class="sub"
+      ><input id="scan" type="checkbox" style="width: auto" /> Также
+      импортировать TXT и подтверждённые корпуса source / translation в
+      корне</label
+    >
+    <div class="flex">
+      <button id="openProject" class="primary">
+        Открыть и определить движок</button
+      ><button data-close>Закрыть</button>
+    </div>
+  </dialog>
+  <dialog id="importDialog">
+    <h1>Догрузить текст</h1>
+    <p class="sub">
+      Выберите один или несколько файлов либо укажите полные пути, каждый на
+      новой строке. JSON: массив записей source / translation или дерево строк.
+      CSV: столбец source.
+    </p>
+    <input
+      id="uploadFiles"
+      type="file"
+      multiple
+      accept=".rpy,.txt,.json,.jsonl,.csv"
+    /><textarea id="importPaths" placeholder="Полный путь к файлу"></textarea>
+    <div class="flex" style="margin-top: 15px">
+      <button id="doImport" class="primary">Добавить в проект</button
+      ><button data-close>Закрыть</button>
+    </div>
+  </dialog>
+  <dialog id="infoDialog">
+    <h1 id="infoTitle"></h1>
+    <div id="infoContent"></div>
+    <button data-close>Закрыть</button>
+  </dialog>
+  <dialog id="exportDialog">
+    <h1>Экспорт перевода</h1>
+    <p class="sub">
+      Исходный игровой файл сохраняется. Для существующего Ren’Py слоя
+      экспортируется .rpy с теми же идентификаторами; для остальных форматов —
+      JSON-корпус. Проверьте экспорт перед установкой в игру.
+    </p>
+    <input id="exportPath" placeholder="Полный путь нового файла" /><button
+      id="doExport"
+      class="primary"
+    >
+      Экспортировать</button
+    ><button data-close>Закрыть</button>
+  </dialog>
+  <div id="toast"></div>
+  <meta name="studio-token" content="__TOKEN__" />
+  <script src="/lifecycle.js"></script>
+  <script src="/studio.js"></script>
+  <script src="/ui_extensions.js"></script>
+  <script src="/project_ui.js"></script>
+  <script src="/workflow_ui.js"></script>
+  <script src="/detection_ui.js"></script>
+  <script src="/process_ui.js"></script>
+</html>
