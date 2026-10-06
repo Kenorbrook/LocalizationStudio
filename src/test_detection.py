@@ -52,7 +52,7 @@ class DetectionTests(unittest.TestCase):
         path=self.file('corpus.json',json.dumps([{'source':'Hello','translation':'Привет'}]));original=path.read_bytes()
         with patch('subprocess.Popen',side_effect=AssertionError('No processes allowed')),patch('urllib.request.OpenerDirector.open',side_effect=AssertionError('No network allowed')):
             r=inspect_project(self.store,self.pid)
-        self.assertEqual(saved_report(self.store,self.pid)['root'],str(self.root));self.assertEqual(path.read_bytes(),original)
+        self.assertEqual(Path(saved_report(self.store,self.pid)['root']).resolve(),self.root.resolve());self.assertEqual(path.read_bytes(),original)
         with self.store.db() as db:self.assertEqual(db.execute('SELECT count(*) FROM records').fetchone()[0],0)
         other=self.root/'other';other.mkdir();pid=self.store.project(str(other))['id'];self.assertIsNone(saved_report(self.store,pid))
         self.assertEqual(import_detected(self.store,self.pid,['corpus.json'])['added'],1)
