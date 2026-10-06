@@ -11,6 +11,8 @@
 !/src/
 !/examples/
 !/.github/
+!/tools/
+!/AGENTS.md
 __pycache__/
 *.py[cod]
 *.sqlite*
