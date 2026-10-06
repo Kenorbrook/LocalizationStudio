@@ -9,6 +9,7 @@ import threading
 import time
 import uuid
 import sys
+from contextlib import closing
 from pathlib import Path
 from paths import APP_HOME
 from update_feed import latest, download
@@ -169,12 +170,6 @@ class UpdateController:
     def install(self):
         if self.state["phase"] != "ready" or not self.session:
             raise ValueError("Сначала скачайте обновление")
-        if self._dirty():
-            raise ValueError("Сохраните или отмените ручные правки перед установкой")
-        from mcp_server import connections
-
-        if connections(self.store):
-            raise ValueError("Отключите MCP-клиент перед установкой обновления")
 
         def action():
             resumed = []
@@ -182,6 +177,15 @@ class UpdateController:
             helper_process = None
             self.closer.pending = True
             try:
+                # Native bridge callbacks must return before evaluating browser JS.
+                if self._dirty():
+                    raise ValueError(
+                        "Сохраните или отмените ручные правки перед установкой"
+                    )
+                from mcp_server import connections
+
+                if connections(self.store):
+                    raise ValueError("Отключите MCP-клиент перед установкой обновления")
                 with self.store.launch_lock:
                     self.store.closing = True
                     with self.store.db() as db:
@@ -259,7 +263,7 @@ class UpdateController:
                 backup.mkdir(parents=True)
                 with (
                     self.store.db() as source,
-                    sqlite3.connect(backup / "studio.sqlite3") as target,
+                    closing(sqlite3.connect(backup / "studio.sqlite3")) as target,
                 ):
                     source.backup(target)
                 plan = {

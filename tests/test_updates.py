@@ -2,6 +2,8 @@ import hashlib
 import io
 import json
 import os
+import threading
+import time
 import tempfile
 import unittest
 import zipfile
@@ -273,5 +275,53 @@ class UpdatesTest(unittest.TestCase):
         controller = UpdateController(store, closer, home=self.home, frozen=True)
         controller.state["phase"] = "ready"
         controller.session = self.home
-        with self.assertRaisesRegex(ValueError, "правки"):
+        controller.install()
+        for _ in range(100):
+            if controller.snapshot()["phase"] == "error":
+                break
+            time.sleep(0.01)
+        self.assertEqual(controller.snapshot()["phase"], "error")
+        self.assertIn("правки", controller.snapshot()["message"])
+
+    def test_install_saves_queues_and_launches_helper(self):
+        store = Store(self.home / "data/studio.sqlite3")
+        store.launch_lock = threading.RLock()
+        store.closing = False
+        project = self.home / "game"
+        project.mkdir()
+        pid = store.project(str(project))["id"]
+        corpus = project / "text.json"
+        corpus.write_text(json.dumps([{"source": "Hello."}]))
+        store.import_files(pid, [corpus])
+        jobs = [store.create_job(pid, "translate", "local", {})]
+        with store.db() as db:
+            for state in ["waiting", "held"]:
+                cursor = db.execute(
+                    "INSERT INTO jobs(project,stage,provider,settings,state) VALUES (?,'translate','local','{}',?)",
+                    (pid, state),
+                )
+                jobs.append(cursor.lastrowid)
+            for jid, state in zip(jobs, ["queued", "waiting", "held"]):
+                db.execute("UPDATE jobs SET state=? WHERE id=?", (state, jid))
+        destroyed = threading.Event()
+        window = SimpleNamespace(
+            evaluate_js=lambda script: False, destroy=destroyed.set
+        )
+        closer = SimpleNamespace(window=window, pending=False, allow_exit=False)
+        controller = UpdateController(store, closer, home=self.home, frozen=True)
+        session = self.home / "data/updates/test"
+        make_bundle(session / "bundle")
+        controller.session = session
+        controller.release = {"latest": "0.2.0"}
+        controller.state["phase"] = "ready"
+        with patch("update_controller.subprocess.Popen") as launch:
             controller.install()
+            self.assertTrue(destroyed.wait(5), controller.snapshot())
+            launch.assert_called_once()
+        plan = json.loads((session / "plan.json").read_text())
+        self.assertEqual(plan["resume_jobs"], [jobs[0]])
+        self.assertEqual(plan["waiting_jobs"], [jobs[1]])
+        with store.db() as db:
+            states = [r[0] for r in db.execute("SELECT state FROM jobs ORDER BY id")]
+        self.assertEqual(states, ["paused", "held", "held"])
+        self.assertTrue((Path(plan["backup"]) / "studio.sqlite3").exists())
