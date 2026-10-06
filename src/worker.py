@@ -17,8 +17,8 @@ def run(store, jid, provider_factory=Provider):
             ).fetchone()
         )
         claimed = db.execute(
-            "UPDATE jobs SET state='running',worker_active=1,pid=?,heartbeat=?,error='' WHERE id=? AND state IN ('queued','paused')",
-            (os.getpid(), time.time(), jid),
+            "UPDATE jobs SET state='running',worker_active=1,pid=?,heartbeat=?,run_started=?,run_done=0,run_elapsed=0,error='' WHERE id=? AND state IN ('queued','paused')",
+            (os.getpid(), time.time(), time.time(), jid),
         )
         if not claimed.rowcount:
             raise ValueError("Задача уже выполняется в другом окне")
@@ -30,11 +30,17 @@ def run(store, jid, provider_factory=Provider):
     logdir.mkdir(parents=True, exist_ok=True)
     log = (logdir / f"job-{jid}.log").open("a", encoding="utf-8")
     stop = threading.Event()
+    started = time.monotonic()
+    elapsed = 0
+    processed = 0
 
     def heartbeat():
         while not stop.wait(5):
             with store.db() as db:
-                db.execute("UPDATE jobs SET heartbeat=? WHERE id=?", (time.time(), jid))
+                db.execute(
+                    "UPDATE jobs SET heartbeat=?,run_elapsed=? WHERE id=?",
+                    (time.time(), max(0, time.monotonic() - started), jid),
+                )
 
     thread = threading.Thread(target=heartbeat, daemon=True)
     thread.start()
@@ -45,8 +51,25 @@ def run(store, jid, provider_factory=Provider):
         log.flush()
 
     emit(f'JOB {jid} — {job["stage"]} — {project["name"]}')
-    started = time.monotonic()
-    processed = 0
+
+    def complete_record(rid, outcome):
+        nonlocal processed, elapsed
+        processed += 1
+        elapsed = max(0, time.monotonic() - started)
+        rate = processed * 60 / max(0.01, elapsed)
+        with store.db() as db:
+            db.execute(
+                "UPDATE queue SET state=? WHERE job=? AND record=?", (outcome, jid, rid)
+            )
+            db.execute(
+                "UPDATE jobs SET done=done+1,rate=?,run_done=?,run_elapsed=? WHERE id=?",
+                (rate, processed, elapsed, jid),
+            )
+            progress = db.execute(
+                "SELECT done,total FROM jobs WHERE id=?", (jid,)
+            ).fetchone()
+        emit(f"PROGRESS {progress[0]}/{progress[1]} | {rate:.1f} lines/min")
+
     try:
         provider = None
         effective_settings = None
@@ -83,8 +106,9 @@ def run(store, jid, provider_factory=Provider):
                     return
                 limit_lines = int(settings.get("run_lines", 0))
                 limit_minutes = float(settings.get("run_minutes", 0))
+                elapsed = max(0, time.monotonic() - started)
                 if (limit_lines and processed >= limit_lines) or (
-                    limit_minutes and time.monotonic() - started >= limit_minutes * 60
+                    limit_minutes and elapsed >= limit_minutes * 60
                 ):
                     reason = "Лимит запуска достигнут; очередь сохранена"
                     db.execute(
@@ -116,12 +140,7 @@ def run(store, jid, provider_factory=Provider):
                     settings.get("marked_review")
                     and r["flag"] != settings["marked_review"]
                 ):
-                    with store.db() as db:
-                        db.execute(
-                            "UPDATE queue SET state='protected' WHERE job=? AND record=?",
-                            (jid, rid),
-                        )
-                        db.execute("UPDATE jobs SET done=done+1 WHERE id=?", (jid,))
+                    complete_record(rid, "protected")
                     emit(f"SKIPPED #{rid}: пометка снята или изменена")
                     continue
                 with store.db() as db:
@@ -235,18 +254,7 @@ def run(store, jid, provider_factory=Provider):
                     store.error(jid, rid, str(e))
                     outcome = "error"
                     emit(f"ERROR #{rid}: {e} — продолжаю")
-            with store.db() as db:
-                db.execute(
-                    "UPDATE queue SET state=? WHERE job=? AND record=?",
-                    (outcome, jid, rid),
-                )
-                processed += 1
-                rate = processed * 60 / max(0.01, time.monotonic() - started)
-                db.execute("UPDATE jobs SET done=done+1,rate=? WHERE id=?", (rate, jid))
-                progress = db.execute(
-                    "SELECT done,total FROM jobs WHERE id=?", (jid,)
-                ).fetchone()
-            emit(f"PROGRESS {progress[0]}/{progress[1]} | {rate:.1f} lines/min")
+            complete_record(rid, outcome)
     except Exception as e:
         with store.db() as db:
             db.execute(
@@ -259,7 +267,10 @@ def run(store, jid, provider_factory=Provider):
         thread.join(timeout=10)
         log.close()
         with store.db() as db:
-            db.execute("UPDATE jobs SET worker_active=0 WHERE id=?", (jid,))
+            db.execute(
+                "UPDATE jobs SET worker_active=0,run_done=?,run_elapsed=max(run_elapsed,?) WHERE id=?",
+                (processed, elapsed, jid),
+            )
         from job_chain import schedule
 
         schedule(store, job["project"])

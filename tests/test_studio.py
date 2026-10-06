@@ -358,8 +358,14 @@ class StudioTests(unittest.TestCase):
             job = db.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
             self.assertEqual(job["state"], "paused")
             self.assertEqual(job["done"], 1)
+            self.assertEqual(job["run_done"], 1)
+            first_started = job["run_started"]
         run(self.store, jid, Translator)
         with self.store.db() as db:
+            resumed = db.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
+            self.assertEqual(resumed["done"], 2)
+            self.assertEqual(resumed["run_done"], 1)
+            self.assertGreater(resumed["run_started"], first_started)
             self.assertEqual(
                 db.execute("SELECT state FROM jobs WHERE id=?", (jid,)).fetchone()[0],
                 "done",
@@ -381,6 +387,11 @@ class StudioTests(unittest.TestCase):
         with patch("worker.time.monotonic", side_effect=[0, 61]):
             run(self.store, jid, Translator)
         with self.store.db() as db:
+            progress = db.execute(
+                "SELECT run_elapsed,run_done FROM jobs WHERE id=?", (jid,)
+            ).fetchone()
+            self.assertGreaterEqual(progress["run_elapsed"], 61)
+            self.assertEqual(progress["run_done"], 0)
             self.assertEqual(
                 db.execute("SELECT done,state FROM jobs WHERE id=?", (jid,)).fetchone()[
                     0
@@ -420,6 +431,47 @@ class StudioTests(unittest.TestCase):
             )
         self.assertEqual(s["run_lines"], 200)
         self.assertEqual(s["model"], "Original")
+        with self.store.db() as db:
+            original = json.loads(
+                db.execute(
+                    "SELECT settings FROM projects WHERE id=?", (self.project,)
+                ).fetchone()[0]
+            )
+        self.assertNotEqual(original.get("run_lines"), 200)
+
+    def test_new_job_applies_and_persists_its_own_limits(self):
+        self.corpus([{"source": "Hello"}])
+        settings = {
+            "model": "fixture",
+            "source_language": "English",
+            "target_language": "Russian",
+            "run_lines": 200,
+            "run_minutes": 0,
+        }
+        with patch("job_runtime.launch"):
+            result = api(
+                self.store,
+                "job",
+                {
+                    "project": self.project,
+                    "stage": "translate",
+                    "provider": "local",
+                    "settings": settings,
+                },
+            )
+        with self.store.db() as db:
+            job_settings = json.loads(
+                db.execute(
+                    "SELECT settings FROM jobs WHERE id=?", (result["job"],)
+                ).fetchone()[0]
+            )
+            project_settings = json.loads(
+                db.execute(
+                    "SELECT settings FROM projects WHERE id=?", (self.project,)
+                ).fetchone()[0]
+            )
+        self.assertEqual(job_settings["run_lines"], 200)
+        self.assertEqual(project_settings["run_lines"], 200)
 
     def test_mcp_job_rejects_read_only_client(self):
         self.corpus([{"source": "Hello"}])

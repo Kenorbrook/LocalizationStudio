@@ -64,6 +64,13 @@ def initialize(db):
     if "model" not in columns:
         db.execute("ALTER TABLE mcp_connections ADD COLUMN model TEXT DEFAULT ''")
     job_columns = {r[1] for r in db.execute("PRAGMA table_info(jobs)")}
+    for name, definition in [
+        ("run_started", "REAL DEFAULT 0"),
+        ("run_elapsed", "REAL DEFAULT 0"),
+        ("run_done", "INTEGER DEFAULT 0"),
+    ]:
+        if name not in job_columns:
+            db.execute(f"ALTER TABLE jobs ADD COLUMN {name} {definition}")
     if "worker_active" not in job_columns:
         db.execute("ALTER TABLE jobs ADD COLUMN worker_active INTEGER DEFAULT 0")
     if "budget_json" not in {r[1] for r in db.execute("PRAGMA table_info(errors)")}:

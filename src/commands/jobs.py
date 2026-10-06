@@ -133,7 +133,12 @@ def control(store, data):
                     ).fetchone()[0]
                 )
                 saved.update(
-                    {k: v for k, v in settings.items() if not k.startswith("_")}
+                    {
+                        k: v
+                        for k, v in settings.items()
+                        if not k.startswith("_")
+                        and k not in {"run_lines", "run_minutes"}
+                    }
                 )
                 db.execute(
                     "UPDATE projects SET settings=? WHERE id=?",

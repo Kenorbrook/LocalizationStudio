@@ -17,6 +17,12 @@ check('mcpReadOnlyEntry',[...$('executionModel').options].some(o=>o.textContent.
 const savedModelChoice=executionModel.value;executionModel.value='cloud';executionModel.onchange();check('cloudSelection',$('provider').value==='cloud'&&cloudConnection.open);executionModel.value=savedModelChoice;executionModel.onchange();cloudConnection.open=reviewMenu.open=false;
 limitMode.value='lines';updateLimitInput();limitValue.value=200;check('lineLimitChoice',readRunLimits().run_lines===200);
 limitMode.value='time';updateLimitInput();limitValue.value=120;check('timeLimitChoice',readRunLimits().run_minutes===120);limitMode.value='none';updateLimitInput();
+check('newLimitsInNewSettings',$('translationSettings').contains($('newRunLimits'))&&!$('taskCard').contains($('newRunLimits')));
+newRunLimits.mode.value='lines';newRunLimits.update();newRunLimits.value.value=200;limitMode.value='lines';limitValue.value=10;check('newAndContinuationLimitsIndependent',settings().run_lines===200&&readRunLimits().run_lines===10);
+const limitedJob={settings:JSON.stringify({run_lines:200}),run_started:1,run_done:35,run_elapsed:10};check('lineRunProgress',describeRunProgress(limitedJob).text.includes('35 / 200')&&describeRunProgress(limitedJob).text.includes('осталось 165'));
+check('timeRunProgress',describeRunProgress({...limitedJob,settings:JSON.stringify({run_minutes:2}),run_elapsed:75}).text.includes('1:15 / 2:00')&&describeRunProgress({...limitedJob,settings:JSON.stringify({run_minutes:2}),run_elapsed:75}).text.includes('осталось 0:45'));
+check('continuationControlsHiddenWhileQueued',$('runLimits').hidden&&$('runLimitText').textContent.includes('после запуска'));
+newRunLimits.mode.value='none';newRunLimits.update();limitMode.value='none';updateLimitInput();
 const originalModels=[...modelInventory];
 applyModelList([{name:'tiny',digest:'one',size:100,modified_at:'2025-01-01',details:{parameter_size:'4B'}},{name:'tiny-alias',digest:'one',size:100,modified_at:'2025-01-02',details:{parameter_size:'4B'}},{name:'large',digest:'two',size:200,modified_at:'2025-01-03',details:{parameter_size:'27B'}}]);
 check('duplicateModelsGrouped',$('model').options.length===2);

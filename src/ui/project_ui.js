@@ -341,6 +341,7 @@ mainAction.onclick = guard(async () => {
     await request("control", {
       id: job.id,
       mode: "resume",
+      limits: readRunLimits(),
       preserve_project_settings: true,
     });
     await refresh();
@@ -370,7 +371,7 @@ function updateTaskActions() {
     ["paused", "held"].includes(job?.state)
       ? JSON.parse(job.settings || "{}")._retry_origin || job.state === "held"
         ? "Продолжит эту очередь с её сохранённой моделью и параметрами."
-        : "Возобновит сохранённую очередь; лимит и число соседних фраз берутся из настроек ниже."
+        : "Начнёт новый отсчёт по параметрам следующего продолжения. Число соседних фраз берётся из настроек ниже."
       : job?.state === "running"
         ? "Приостановит задачу после текущего запроса."
         : job?.state === "queued"

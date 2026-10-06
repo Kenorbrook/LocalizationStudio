@@ -1,61 +1,25 @@
 // Human context, local/API/MCP model selection, and bounded translation runs.
-const limitMenu = element("details");
-limitMenu.id = "runLimits";
-limitMenu.append(element("summary", "Лимит запуска / продолжения"));
-const limitMode = element("select");
-limitMode.id = "limitMode";
-for (const [value, label] of [
-  ["none", "Без ограничения"],
-  ["lines", "По числу строк"],
-  ["time", "По времени"],
-]) {
-  const option = element("option", label);
-  option.value = value;
-  limitMode.append(option);
-}
-const limitValue = element("input");
-limitValue.id = "limitValue";
-limitValue.type = "number";
-limitValue.min = 1;
-limitValue.value = 200;
-const limitLabel = element("label", "Количество строк");
-limitLabel.id = "limitLabel";
-const limitHint = element(
-  "p",
-  "После достижения лимита очередь встанет на паузу. Остановка — после текущей строки.",
-  "sub",
+const continuationLimits = createRunLimitControls(
+  "runLimits",
+  "Параметры следующего продолжения",
+  "Применятся после нажатия «Продолжить»: новый отсчёт с нуля. После достижения лимита очередь встанет на паузу; текущий запрос сначала завершится.",
 );
-limitMenu.append(limitMode, limitLabel, limitValue, limitHint);
+const newRunLimits = createRunLimitControls(
+  "newRunLimits",
+  "Лимит нового запуска",
+  "Применится к новой задаче после нажатия запуска перевода, редактуры или проверки. Лимит считается с начала запуска; ошибки тоже входят в число обработанных строк. При достижении лимита очередь сохраняется на паузе.",
+);
+settingsMenu.append(newRunLimits.section);
+const limitMenu = continuationLimits.section;
+const limitMode = continuationLimits.mode;
+const limitValue = continuationLimits.value;
 actionHint.after(limitMenu);
 function readRunLimits(validate = true) {
-  const value = +limitValue.value;
-  if (
-    validate &&
-    limitMode.value !== "none" &&
-    (!Number.isFinite(value) || value <= 0)
-  )
-    throw Error("Укажите положительный лимит");
-  return {
-    run_lines: limitMode.value === "lines" ? value : 0,
-    run_minutes: limitMode.value === "time" ? value : 0,
-  };
+  return continuationLimits.read(validate);
 }
 function updateLimitInput() {
-  const shown = limitMode.value !== "none";
-  limitLabel.hidden = limitValue.hidden = !shown;
-  setText(
-    limitLabel,
-    limitMode.value === "time"
-      ? "Продолжительность, минут (120 = 2 часа)"
-      : "Количество обрабатываемых строк",
-  );
-  limitValue.step = limitMode.value === "time" ? "0.1" : "1";
+  continuationLimits.update();
 }
-limitMode.onchange = () => {
-  limitValue.value = limitMode.value === "time" ? 120 : 200;
-  updateLimitInput();
-};
-updateLimitInput();
 const mcpSessionInput = element("input");
 mcpSessionInput.id = "mcp_session";
 mcpSessionInput.hidden = true;
@@ -182,7 +146,7 @@ mcpProviderOption.value = "mcp";
 $("provider").append(mcpProviderOption);
 studioLifecycle.register("settings", "originalSettings", () => {
   return {
-    ...readRunLimits(false),
+    ...newRunLimits.read(false),
     execution_kind: $("provider").value,
     mcp_session: mcpSessionInput.value,
     mcp_model_hint: modelHint.value,
@@ -190,13 +154,14 @@ studioLifecycle.register("settings", "originalSettings", () => {
 });
 const workflowStart = start;
 start = function (...args) {
-  readRunLimits();
+  newRunLimits.read();
   return workflowStart(...args);
 };
 const workflowLoadSettings = loadSettings;
 loadSettings = function (p) {
   workflowLoadSettings(p);
   const s = JSON.parse(p.settings || "{}");
+  newRunLimits.load(s);
   $("provider").value = s.execution_kind || "local";
   mcpSessionInput.value = s.mcp_session || "";
   modelHint.value = s.mcp_model_hint || "";
@@ -208,6 +173,7 @@ applyModelList = function (...args) {
   updateExecutionChoices();
 };
 let limitsProject = 0;
+let limitsJob = 0;
 studioLifecycle.register(
   "refresh",
   "workflowRefresh",
@@ -215,12 +181,23 @@ studioLifecycle.register(
     knownConnections = window.connectionSnapshot || [];
     updateExecutionChoices();
     if (initial || limitsProject !== project) {
-      const s = job ? JSON.parse(job.settings || "{}") : {};
-      limitMode.value = s.run_lines ? "lines" : s.run_minutes ? "time" : "none";
-      limitValue.value = s.run_lines || s.run_minutes || 200;
-      updateLimitInput();
+      const s = JSON.parse(
+        snapshot.projects.find((p) => p.id === project)?.settings || "{}",
+      );
+      newRunLimits.load(s);
       limitsProject = project;
     }
+    if (initial || limitsJob !== job?.id) {
+      continuationLimits.load(JSON.parse(job?.settings || "{}"));
+      limitsJob = job?.id;
+    }
+    limitMenu.hidden = !["paused", "held"].includes(job?.state);
+    const progress = describeRunProgress(job);
+    setText(runLimitText, progress.text);
+    runLimitProgress.hidden =
+      !job || progress.fraction === null || !job.run_started;
+    runLimitProgress.value = Math.min(1, Math.max(0, progress.fraction || 0));
+    runLimitText.hidden = !job;
   },
 );
 // Only the body scrolls; title and close controls stay visible in every info dialog.
@@ -444,10 +421,19 @@ taskCard.id = "taskCard";
 taskCard.setAttribute("aria-label", "Текущая задача");
 const taskHeading = $("jobState").parentElement;
 taskHeading.classList.add("task-heading");
+const runLimitText = element("p", undefined, "sub");
+runLimitText.id = "runLimitText";
+const runLimitProgress = element("progress");
+runLimitProgress.id = "runLimitProgress";
+runLimitProgress.max = 1;
+runLimitProgress.setAttribute("aria-label", "Прогресс лимита этого запуска");
+runLimitProgress.style.width = "100%";
 taskCard.append(
   taskHeading,
   $("progress"),
   $("progressText"),
+  runLimitText,
+  runLimitProgress,
   activeSettings,
   $("live"),
   mainAction,

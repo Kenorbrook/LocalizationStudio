@@ -319,7 +319,7 @@ folderInstruction.oninput = () =>
   );
 folderRun.onclick = guard(async () => {
   if (dirty.size) throw Error("Сохраните или отмените правки");
-  readRunLimits();
+  newRunLimits.read();
   await request("job", {
     project,
     stage: "review",
