@@ -1,6 +1,7 @@
 # Only reviewed application sources and documentation are published.
 /*
 !/.gitignore
+!/.gitattributes
 !/README.md
 !/build.ps1
 !/requirements.txt

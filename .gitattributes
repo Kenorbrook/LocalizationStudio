@@ -1,0 +1,4 @@
+* text=auto
+src/ui/*.js text eol=lf
+src/ui/*.css text eol=lf
+src/ui/*.html text eol=lf
