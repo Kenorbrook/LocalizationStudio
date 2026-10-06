@@ -51,10 +51,14 @@ def _launch(store, jid):
     else: args=[sys.executable,str(ROOT/'app.py')]
     args+=['--worker',str(jid),'--db',str(store.path)]
     folder=store.path.parent/'worker-logs'; folder.mkdir(parents=True,exist_ok=True)
-    with (folder/f'job-{jid}-process.log').open('ab') as output:
-        process=subprocess.Popen(args,stdin=subprocess.DEVNULL,stdout=output,stderr=output,
-                         creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
-
+    with store.db() as db:db.execute('UPDATE jobs SET worker_active=1 WHERE id=?',(jid,))
+    try:
+        with (folder/f'job-{jid}-process.log').open('ab') as output:
+            process=subprocess.Popen(args,stdin=subprocess.DEVNULL,stdout=output,stderr=output,
+                             creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+    except Exception:
+        with store.db() as db:db.execute('UPDATE jobs SET worker_active=0 WHERE id=?',(jid,))
+        raise
     with store.db() as db:db.execute('UPDATE jobs SET pid=? WHERE id=?',(process.pid,jid))
 
 def job_log(store, jid):
@@ -71,6 +75,9 @@ def job_log(store, jid):
     return {'text':'\n'.join(lines[-80:])}
 
 def state(store, project,editing=False):
+    if project:
+        from job_chain import schedule
+        schedule(store,project)
     store.archive_completed(project if editing else 0)
     with store.db() as db:
         projects=[dict(r) for r in db.execute("SELECT p.*,EXISTS(SELECT 1 FROM jobs j WHERE j.project=p.id AND j.state IN ('running','queued')) active FROM projects p WHERE p.hidden=0 AND p.deleting=0 ORDER BY p.id")]
@@ -78,9 +85,9 @@ def state(store, project,editing=False):
         if not project: return {'projects':projects,'files':[],'counts':{},'jobs':[],'project':None}
         files=[dict(r) for r in db.execute('SELECT f.id,f.path,f.kind,count(r.id) total,sum(r.status=\'translated\') translated,sum(r.status=\'edited\') edited,sum(r.status=\'verified\') verified FROM files f LEFT JOIN records r ON r.file=f.id WHERE f.project=? GROUP BY f.id ORDER BY f.path',(project,))]
         counts=dict(db.execute('SELECT r.status,count(*) FROM records r JOIN files f ON f.id=r.file WHERE f.project=? GROUP BY r.status',(project,)).fetchall())
-        jobs=[dict(r) for r in db.execute('SELECT * FROM jobs WHERE project=? ORDER BY id DESC LIMIT 10',(project,))]
+        jobs=[dict(r) for r in db.execute("SELECT * FROM jobs WHERE project=? ORDER BY CASE WHEN state IN ('running','queued','paused','waiting','held') THEN 0 ELSE 1 END,CASE WHEN state IN ('running','queued','paused','waiting','held') THEN id ELSE -id END LIMIT 100",(project,))]
         errors=db.execute('SELECT count(*) FROM errors WHERE project=? AND resolved=0',(project,)).fetchone()[0]
-        pending=db.execute("SELECT count(*) FROM queue q JOIN jobs j ON j.id=q.job WHERE j.project=? AND j.state IN ('queued','running','paused') AND q.state='pending' AND NOT EXISTS(SELECT 1 FROM preserved_records p WHERE p.record=q.record)",(project,)).fetchone()[0]
+        pending=db.execute("SELECT count(*) FROM queue q JOIN jobs j ON j.id=q.job WHERE j.project=? AND j.state IN ('queued','running','paused','waiting','held') AND q.state='pending' AND NOT EXISTS(SELECT 1 FROM preserved_records p WHERE p.record=q.record)",(project,)).fetchone()[0]
         flags=dict(db.execute('SELECT m.kind,count(*) FROM record_marks m JOIN records r ON r.id=m.record JOIN files f ON f.id=r.file WHERE f.project=? GROUP BY m.kind',(project,)).fetchall())
     return {'projects':projects,'project':project,'files':files,'counts':counts,'jobs':jobs,'errors':errors,'pending':pending,'flags':flags}
 
@@ -117,6 +124,21 @@ def validate_job_settings(store,pid,provider,settings,old):
     return settings
 
 def api(store, action, data):
+    if action=='enqueue-error-retry':
+        from job_chain import enqueue_retry
+        from contextlib import nullcontext
+        with getattr(store,'launch_lock',nullcontext()):return enqueue_retry(store,data)
+    if action=='error-retry-plan':
+        from job_chain import plan
+        return plan(store,int(data['project']))
+    if action=='error-retry-budget':
+        from job_chain import bulk_budget
+        return bulk_budget(store,int(data['project']),data['stage'],data['settings'])
+    if action=='manual-error':
+        row=store.record(int(data['id']))
+        if row['project']!=int(data['project']):raise ValueError('Строка не принадлежит проекту')
+        if row['preserve_kind']:return api(store,'translate-preserved',{**data,'mode':'manual'})
+        return store.update(row['id'],int(data['revision']),data['text'],'translated','human','Ручной перевод ошибки',manual=True)
     if action=='translate-preserved':
         from preserved_workflow import active_job,submit
         from contextlib import nullcontext
@@ -255,7 +277,8 @@ def api(store, action, data):
             job=db.execute('SELECT * FROM jobs WHERE id=?',(jid,)).fetchone()
             if not job: raise ValueError('Задача не найдена')
             if mode=='resume':
-                if job['state']!='paused': raise ValueError('Продолжить можно задачу на паузе')
+                if job['state'] not in {'paused','held'}: raise ValueError('Продолжить можно задачу на паузе')
+                if db.execute("SELECT id FROM jobs WHERE project=? AND id<>? AND (state IN ('running','queued','paused') OR worker_active=1)",(job['project'],jid)).fetchone():raise ValueError('Сначала завершите текущую задачу проекта')
                 if time.time()-job['heartbeat']<10: raise ValueError('Дождитесь завершения текущего запроса перед продолжением')
                 settings=json.loads(job['settings'])
                 from error_workflow import resume_settings,requeue
@@ -273,6 +296,7 @@ def api(store, action, data):
                 if not data.get('preserve_project_settings'):
                     saved=json.loads(db.execute('SELECT settings FROM projects WHERE id=?',(job['project'],)).fetchone()[0]);saved.update({k:v for k,v in settings.items() if not k.startswith('_')});db.execute('UPDATE projects SET settings=? WHERE id=?',(dump(saved),job['project']))
                 db.execute("UPDATE jobs SET state='queued' WHERE id=?",(jid,))
+                db.execute("UPDATE jobs SET state='waiting' WHERE project=? AND state='held'",(job['project'],))
             elif mode in {'pause','cancel'}: db.execute('UPDATE jobs SET state=? WHERE id=?',('paused' if mode=='pause' else 'cancelled',jid))
             else: raise ValueError('Некорректная команда')
         if mode=='resume':
@@ -340,7 +364,9 @@ def serve(store,port,open_browser,ready=None):
                     data={'report':saved_report(store,int(q['project']))}
                 elif url.path=='/api/job-log': data=job_log(store,int(q['id']))
                 elif url.path=='/api/errors':
-                    with store.db() as db: data=[dict(r) for r in db.execute('SELECT e.*,r.source,r.text,j.stage FROM errors e LEFT JOIN records r ON r.id=e.record LEFT JOIN jobs j ON j.id=e.job WHERE e.project=? AND e.resolved=0 ORDER BY e.id DESC LIMIT 100 OFFSET ?',(int(q['project']),int(q.get('offset',0))))]
+                    with store.db() as db: data=[dict(r) for r in db.execute('SELECT e.*,r.source,r.text,j.stage,j.settings retry_settings,j.provider retry_provider FROM errors e LEFT JOIN records r ON r.id=e.record LEFT JOIN jobs j ON j.id=e.job WHERE e.project=? AND e.resolved=0 ORDER BY e.id DESC LIMIT 100 OFFSET ?',(int(q['project']),int(q.get('offset',0))))]
+                    from error_workflow import fill_budgets
+                    data=fill_budgets(store,data)
                 else: return self.respond({'error':'Не найдено'},404)
                 self.respond(data)
             except Exception as e: self.respond({'error':str(e)},400)
@@ -355,6 +381,7 @@ def serve(store,port,open_browser,ready=None):
     # Workers survive closing the app; recover abandoned queue on restart.
     with store.db() as db:
         db.execute("UPDATE jobs SET state='paused',error='Обработчик завершился; продолжите задачу' WHERE state IN ('running','queued') AND heartbeat<?",(time.time()-60,))
+        db.execute('UPDATE jobs SET worker_active=0 WHERE heartbeat<?',(time.time()-60,))
     server=ThreadingHTTPServer(('127.0.0.1',port),Handler)
     port=server.server_port
     url=f'http://127.0.0.1:{port}/'; print('Localization Studio: '+url,flush=True)

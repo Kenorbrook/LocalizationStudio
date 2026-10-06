@@ -10,7 +10,7 @@ def run(store, jid, provider_factory=Provider):
         job=db.execute('SELECT * FROM jobs WHERE id=?',(jid,)).fetchone()
         if not job or job['state'] not in {'queued','paused'}: raise ValueError('Задача уже запущена или завершена')
         project=dict(db.execute('SELECT * FROM projects WHERE id=?',(job['project'],)).fetchone())
-        claimed=db.execute("UPDATE jobs SET state='running',pid=?,heartbeat=?,error='' WHERE id=? AND state IN ('queued','paused')",(os.getpid(),time.time(),jid))
+        claimed=db.execute("UPDATE jobs SET state='running',worker_active=1,pid=?,heartbeat=?,error='' WHERE id=? AND state IN ('queued','paused')",(os.getpid(),time.time(),jid))
         if not claimed.rowcount: raise ValueError('Задача уже выполняется в другом окне')
     settings=json.loads(job['settings']);settings['_studio_db']=str(store.path);settings['_studio_job']=jid;settings['_studio_project']=job['project']
     logdir=Path(project['root'])/'translation_tools'/'studio'; logdir.mkdir(parents=True,exist_ok=True)
@@ -92,4 +92,8 @@ def run(store, jid, provider_factory=Provider):
     except Exception as e:
         with store.db() as db: db.execute("UPDATE jobs SET state='paused',error=? WHERE id=? AND state='running'",(str(e)[:1000],jid))
         emit('INCOMPLETE: '+str(e))
-    finally: stop.set(); thread.join(timeout=10); log.close()
+    finally:
+        stop.set(); thread.join(timeout=10); log.close()
+        with store.db() as db:db.execute('UPDATE jobs SET worker_active=0 WHERE id=?',(jid,))
+        from job_chain import schedule
+        schedule(store,job['project'])

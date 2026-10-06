@@ -45,7 +45,7 @@ def delete_project(store,pid,stopper=stop_worker):
         if not db.execute('SELECT id FROM projects WHERE id=?',(pid,)).fetchone():raise ValueError('Проект не найден')
         db.execute('UPDATE projects SET deleting=1 WHERE id=?',(pid,))
         jobs=[dict(r) for r in db.execute('SELECT * FROM jobs WHERE project=?',(pid,))]
-        db.execute("UPDATE jobs SET state='cancelled',error='Проект удаляется' WHERE project=? AND state IN ('running','queued','paused')",(pid,))
+        db.execute("UPDATE jobs SET state='cancelled',error='Проект удаляется' WHERE project=? AND state IN ('running','queued','paused','waiting','held')",(pid,))
         db.execute("UPDATE mcp_requests SET state='failed',response='Проект удаляется' WHERE job IN (SELECT id FROM jobs WHERE project=?) AND state IN ('pending','sent')",(pid,))
     stopped=sum(bool(stopper(store,job)) for job in jobs)
     remove_secret(pid)

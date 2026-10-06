@@ -77,6 +77,20 @@ def validate_overrides(values):
     parsed=resume_settings({},values)
     return {'context':parsed['context'],**neighbor_settings(values)}
 
+def fill_budgets(store,rows):
+    """Backfill old error diagnostics once, using the failing job's settings."""
+    for row in rows:
+        if row.get('budget_json') not in (None,'','{}') or not row.get('record') or not row.get('stage'):continue
+        try:
+            settings=json.loads(row['retry_settings'])
+            with store.db() as db:
+                override=db.execute('SELECT settings FROM queue_overrides WHERE job=? AND record=?',(row['job'],row['record'])).fetchone()
+            if override:settings.update(json.loads(override[0]))
+            row['budget_json']=dump(budget(store,row['project'],row['record'],row['stage'],settings))
+            with store.db() as db:db.execute('UPDATE errors SET budget_json=? WHERE id=?',(row['budget_json'],row['id']))
+        except (ValueError,KeyError,TypeError):pass
+    return rows
+
 def save_overrides(db,jid,ids,values):
     values=validate_overrides(values)
     if len(ids)!=1:raise ValueError('Другие параметры доступны для одной строки')

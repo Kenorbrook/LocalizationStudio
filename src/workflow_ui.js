@@ -85,3 +85,35 @@ const neighborLoadSettings=loadSettings;loadSettings=function(p){neighborLoadSet
 const foreignPolicy=element('label');const autoForeign=element('input');autoForeign.id='auto_foreign';autoForeign.type='checkbox';autoForeign.checked=true;foreignPolicy.append(autoForeign,document.createTextNode(' Сохранять реплики на другом языке'));neighborControls.after(foreignPolicy,element('p','Язык определяется локально перед переводом. Уверенные случаи сохраняются в оригинале с причиной; сомнительные получают пометку «Ручная проверка». Имена и отдельные слова автоматически не исключаются.','sub'));
 const languageSettings=settings;settings=function(){return {...languageSettings(),auto_foreign:autoForeign.checked}};
 const languageLoad=loadSettings;loadSettings=function(p){languageLoad(p);autoForeign.checked=JSON.parse(p.settings||'{}').auto_foreign!==false};
+
+// Keep the live job visually separate from controls for later work.
+// Move existing nodes once so polling and editor state retain their identity.
+const taskCard=element('section');taskCard.id='taskCard';taskCard.setAttribute('aria-label','Текущая задача');
+const taskHeading=$('jobState').parentElement;taskHeading.classList.add('task-heading');
+taskCard.append(taskHeading,$('progress'),$('progressText'),activeSettings,$('live'),mainAction,actionHint,limitMenu,taskMenu,$('logDetails'),originalControls);
+const setupCard=element('section');setupCard.id='setupCard';setupCard.setAttribute('aria-label','Настройки и проверка');
+const setupHeading=element('h2','Настройки и проверка');setupHeading.className='sidebar-heading';setupCard.append(setupHeading);
+for(const node of [...right.childNodes])setupCard.append(node);
+right.append(taskCard,setupCard);
+const sidebarStyle=element('style');sidebarStyle.textContent=`
+.right{padding:16px 12px;background:#11191e;scrollbar-gutter:stable}
+#taskCard,#setupCard{border:1px solid var(--line);border-radius:12px;padding:16px 14px;min-width:0}
+#taskCard{background:#1a252b;border-top:3px solid var(--accent)}
+#taskCard .task-heading{gap:10px;margin-bottom:8px}
+#taskCard .task-heading strong{font-size:14px}
+#taskCard #progress{display:block;width:100%;margin:14px 0 9px}
+#taskCard #progressText{font-variant-numeric:tabular-nums}
+#taskCard #activeSettings{margin:8px 0 14px;overflow-wrap:anywhere}
+#taskCard #live{margin:0 0 16px;background:#111b20;min-height:170px;max-height:300px;overflow:auto}
+#taskCard #mainAction{margin:0;width:100%}
+#taskCard #actionHint{margin:8px 0 14px}
+#taskCard>details{margin:0;padding:12px 0;border-top:1px solid #34434b}
+#taskCard>details:last-of-type{padding-bottom:0}
+#taskCard>details>summary{line-height:1.5}
+#setupCard{margin-top:20px;background:#151e23}
+#setupCard .sidebar-heading{margin:0 0 10px;color:var(--muted);font-size:11px;letter-spacing:1px}
+#setupCard>details{margin:0;padding:13px 0;border-top:1px solid var(--line)}
+#setupCard>.sidebar-heading+details{border-top:0}
+#setupCard>details>summary{line-height:1.5}
+#setupCard>.sub{margin:14px 0 0;padding-top:14px;border-top:1px solid var(--line)}
+`;document.head.append(sidebarStyle);

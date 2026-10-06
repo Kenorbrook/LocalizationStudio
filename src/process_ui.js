@@ -62,20 +62,36 @@ const literalRender=renderRows;renderRows=function(data,quiet=false){literalRend
 
  else {const menu=element('details');menu.append(element('summary','Оставить оригинал без перевода'));const reason=element('input');reason.placeholder='Почему: другой язык, авторский приём…';reason.maxLength=1000;reason.style.width='100%';const preserve=element('button','Другой язык / авторский приём');preserve.onclick=guard(async()=>{if(dirty.has(row.id))throw Error('Сохраните или отмените правку');if(!reason.value.trim())throw Error('Укажите причину сохранения оригинала');await request('preserve',{id:row.id,revision:row.revision,kind:'foreign',reason:reason.value.trim()});await refresh();await loadRows()});menu.append(reason,preserve);actions.append(menu)}
 }};
-// Error recovery uses the current settings and never starts inference for a budget check.
-const oldErrorOpen=$('errorsButton').onclick;
-$('errorsButton').onclick=guard(async()=>{
- await oldErrorOpen();if(!$('infoDialog').open)return;
- const errors=await request('errors?project='+project);const content=$('infoContent');
- content.prepend(element('p','Повтор использует текущую модель и настройки справа. Если задача работает, сначала приостановите её. Проверка контекста не обращается к модели. Ручные правки защищены.','sub'));
- const retry=async(stage,record)=>{if(dirty.size)throw Error('Сохраните или отмените правки');await request('retry-errors',{project,stage,record,provider:stage==='cloud'&&$('provider').value==='local'?'cloud':$('provider').value,settings:settings()});$('infoDialog').close();await refresh();toast('Ошибочные строки возвращены в обработку с текущими настройками')};
- const controls=element('div',undefined,'flex wrap');
- for(const stage of [...new Set(errors.filter(e=>e.record&&e.stage).map(e=>e.stage))]){const b=element('button','Повторить все ошибки '+({translate:'перевода',review:'редактуры',cloud:'проверки'}[stage]));b.dataset.retryStage=stage;b.onclick=guard(()=>retry(stage));controls.append(b)}
- if(job&&['running','queued'].includes(job.state)){const pause=element('button','Приостановить текущую задачу');pause.onclick=guard(async()=>{await request('control',{id:job.id,mode:'pause'});pause.disabled=true;toast('Задача приостановлена. Дождитесь завершения текущего запроса перед повтором')});controls.append(pause)}
- content.prepend(controls);
- const cards=[...content.querySelectorAll('.error')];
- errors.forEach((e,i)=>{if(!e.record||!e.stage||!cards[i])return;const card=cards[i];const one=element('button','Повторить эту строку');one.dataset.retryRecord=e.record;one.onclick=guard(()=>retry(e.stage,e.record));const inspect=element('button','Проверить контекст без запуска');inspect.dataset.budgetRecord=e.record;const result=element('p',undefined,'sub');inspect.onclick=guard(async()=>{const b=await request('error-budget',{project,record:e.record,stage:e.stage,settings:settings()});setText(result,`Выбрано: ${b.configured} токенов. Полный запрос с резервом ответа: ≈${b.estimated_full}. Короткий фрагмент без соседей: ≈${b.estimated_minimum}. Рекомендуемый контекст для полного запроса: ≈${b.recommended}. `+(b.fits_full?'По оценке помещается.':'Полный запрос не помещается.')+' Это оценка; точное число зависит от токенизатора модели. Разбиение и сокращение соседей могут уменьшить запрос.');});const custom=element('button','Повторить с другими параметрами');custom.dataset.customRetryRecord=e.record;const panel=element('div');panel.hidden=true;panel.style.padding='12px 0';const fields={};for(const [key,label,min,max]of [['context_before','Фраз до',0,100],['context_after','Фраз после',0,100],['context','Контекст, токенов',1024,131072]]){const box=element('label',label);const input=element('input');input.type='number';input.min=min;input.max=max;input.step=1;input.value=settings()[key];input.dataset.overrideKey=key;fields[key]=input;box.append(input);panel.append(box)}panel.append(element('p','Применится только к этой строке. Настройки проекта и остальных строк сохранятся.','sub'));const run=element('button','Повторить только с этими параметрами');run.dataset.runCustomRetry=e.record;const estimate=element('button','Оценить контекст');const cancel=element('button','Отмена');cancel.onclick=()=>panel.hidden=true;custom.onclick=()=>panel.hidden=!panel.hidden;const readOverrides=()=>{const values={};for(const [k,input]of Object.entries(fields)){if(!input.checkValidity()||!Number.isInteger(+input.value))throw Error('Проверьте параметры строки');values[k]=+input.value}return values};run.onclick=guard(async()=>{if(dirty.size)throw Error('Сохраните или отмените правки');await request('retry-errors',{project,stage:e.stage,record:e.record,provider:e.stage==='cloud'&&$('provider').value==='local'?'cloud':$('provider').value,settings:settings(),overrides:readOverrides()});$('infoDialog').close();await refresh();toast('Для этой строки сохранены отдельные параметры повтора')});const budgetText=element('p',undefined,'sub');estimate.onclick=guard(async()=>{const b=await request('error-budget',{project,record:e.record,stage:e.stage,settings:{...settings(),...readOverrides()}});setText(budgetText,`Полный запрос: ≈${b.estimated_full} токенов; выбрано ${b.configured}; рекомендуемый запас: ≈${b.recommended}. Оценка, без запуска модели.`)});panel.append(run,estimate,cancel,budgetText);card.append(one,inspect,custom,panel,result)});
-});
+// Error retries are separate FIFO jobs with their own immutable settings.
+function budgetText(b){return `Контекст: ${b.configured} токенов. Полный запрос: ≈${b.estimated_full}; короткий фрагмент без соседей: ≈${b.estimated_minimum}; рекомендуемый запас: ≈${b.recommended}. Резерв ответа: ${b.output_reserve}. Это оценка, без обращения к модели.`}
+function modalError(e,where){where.textContent=e.message||String(e);where.style.color='var(--red)'}
+$('errorsButton').onclick=async()=>{
+ try{
+  const [errors,retryPlan]=await Promise.all([request('errors?project='+project),request('error-retry-plan',{project})]),content=$('infoContent');$('infoTitle').textContent='Ошибки этого проекта';content.replaceChildren(element('p','Повторы добавляются отдельными очередями после текущей задачи. Модель и параметры каждой очереди сохраняются отдельно.','sub'));
+  const bulk=element('button','Повторить все с новыми параметрами','primary');bulk.id='retryAllErrors';bulk.disabled=!Object.values(retryPlan).some(n=>n>0);bulk.style.margin='0 0 16px';bulk.onclick=()=>showErrorParameters({bulk:true,stage:Object.keys(retryPlan).find(s=>retryPlan[s]>0)||'translate',plan:retryPlan});content.append(bulk);
+  for(const e of errors){const card=element('div',undefined,'error');card.append(element('div',`${e.at} · задача ${e.job||'импорт'} · строка ${e.record||'—'}`),element('div',e.source||''),element('p',e.message));const estimate=element('div',undefined,'sub');estimate.style.margin='12px 0';try{const b=JSON.parse(e.budget_json||'{}');if(b.configured)estimate.textContent=budgetText(b)}catch{}
+   const repeat=element('button','Повторить');repeat.dataset.errorRepeat=e.id;repeat.onclick=()=>showErrorRetry(e);if(e.record&&e.stage)card.append(estimate,repeat);content.append(card)
+  }
+  if(!errors.length)content.append(element('p','Открытых ошибок нет'));$('infoDialog').showModal();content.scrollTop=0;
+ }catch(e){toast(e.message)}
+};
+async function showErrorRetry(error){
+ const content=$('infoContent');$('infoTitle').textContent='Повторить строку';content.replaceChildren(element('p',error.source||''));
+ const note=element('p','Будет создана отдельная очередь. Она начнётся после основной и ранее добавленных очередей. На паузе цепочка ждёт продолжения.','sub');content.append(note);const message=element('p');message.setAttribute('role','status');
+ for(const [mode,label]of [['original','Добавить в очередь без изменений'],['custom','Добавить с новыми параметрами'],['manual','Перевести вручную']]){const b=element('button',label);b.style.cssText='display:block;width:100%;margin:12px 0';b.dataset.retryChoice=mode;b.onclick=async()=>{try{if(dirty.size)throw Error('Сохраните или отмените правки');if(mode==='manual'){const row=await request('current?id='+error.record);return showPreservedManual(row,'manual-error')}if(mode==='custom')return showErrorParameters(error);b.disabled=true;const result=await request('enqueue-error-retry',{project,record:error.record,stage:error.stage,mode:'original',settings:settings()});$('infoDialog').close();await refresh();toast('Добавлена очередь повтора №'+result.job)}catch(e){modalError(e,message)}finally{b.disabled=false}};content.append(b)}content.append(message);
+ if(!$('infoDialog').open)$('infoDialog').showModal();content.scrollTop=0;
+}
+function showErrorParameters(error){
+ const content=$('infoContent');$('infoTitle').textContent=error.bulk?'Повторить все ошибки с новыми параметрами':'Новые параметры повтора';content.replaceChildren(element('p',error.bulk?'Все подходящие строки выбранного этапа во всём проекте. Ручные правки защищены. Каждая фраза добавится один раз.':error.source||''));const form=element('div');form.style.cssText='display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px';const picker=executionModel.cloneNode(true);picker.removeAttribute('id');picker.id='retryExecutionModel';const modelLabel=element('label','Модель этой очереди');modelLabel.style.gridColumn='1 / -1';picker.style.cssText='display:block;width:100%;margin-top:6px';modelLabel.append(picker);form.append(modelLabel);picker.value=executionModel.value;
+ const fields={},base=settings();for(const [key,label,min,max]of [['context_before','Фраз до',0,100],['context_after','Фраз после',0,100],['context','Контекст, токенов',1024,131072],['max_output','Лимит ответа, токенов',100,100000]]){const labelNode=element('label',label),input=element('input');input.type='number';input.min=min;input.max=max;input.step=1;input.value=base[key];input.style.cssText='display:block;width:100%;box-sizing:border-box;margin-top:6px';input.dataset.retryParameter=key;fields[key]=input;labelNode.append(input);form.append(labelNode)}
+ if(error.bulk){const stageLabel=element('label','Этап очереди'),stagePicker=element('select');stagePicker.id='retryBulkStage';stageLabel.style.gridColumn='1 / -1';stagePicker.style.cssText='display:block;width:100%;margin-top:6px';for(const [stage,label]of Object.entries({translate:'Перевод',review:'Редактура',cloud:'Облачная проверка'})){const option=element('option',label+' · '+error.plan[stage]+' строк');option.value=stage;option.disabled=!error.plan[stage];stagePicker.append(option)}stagePicker.value=error.stage;stagePicker.onchange=()=>{error.stage=stagePicker.value};stageLabel.append(stagePicker);form.prepend(stageLabel)}
+ const estimate=element('div',undefined,'sub');estimate.id='retryBudget';estimate.style.cssText='margin:14px 0;line-height:1.7';estimate.setAttribute('aria-live','polite');const message=element('p');message.setAttribute('role','status');
+ function read(){const values={};for(const [key,input]of Object.entries(fields)){if(!input.checkValidity()||!Number.isInteger(+input.value))throw Error('Проверьте параметры строки');values[key]=+input.value}const selected=picker.value,s={...base,...values};let provider='local';if(selected==='cloud')provider='cloud';else if(selected.startsWith('mcp:')){provider='mcp';s.mcp_session=selected.slice(4)}else s.model=selected.slice(6);return {provider,settings:s,overrides:{context:values.context,context_before:values.context_before,context_after:values.context_after}}}
+ let timer,sequence=0;async function estimateNow(){const version=++sequence;try{const input=read();estimate.textContent='Пересчитываем оценку…';const b=await request(error.bulk?'error-retry-budget':'error-budget',{project,record:error.record,stage:error.stage,settings:input.settings});if(version===sequence&&form.isConnected)estimate.textContent=(error.bulk?`Оценка для ${b.records} строк, показан самый большой запрос. Полностью помещаются: ${b.fits_count} из ${b.records}. `:'')+budgetText(b)}catch(e){if(version===sequence&&form.isConnected)estimate.textContent=e.message}}
+ function changed(){++sequence;clearTimeout(timer);timer=setTimeout(estimateNow,250)}form.addEventListener('input',changed);form.addEventListener('change',changed);
+ const send=element('button','Добавить отдельную очередь','primary');send.id='enqueueCustomRetry';send.onclick=async()=>{try{if(dirty.size)throw Error('Сохраните или отмените правки');const input=read();send.disabled=true;const result=await request('enqueue-error-retry',{project,record:error.record,stage:error.stage,mode:'custom',...input});$('infoDialog').close();await refresh();toast('Добавлена очередь №'+result.job+' · '+result.records+' строк с новыми параметрами')}catch(e){modalError(e,message)}finally{send.disabled=false}};
+ const back=element('button','← Выбор повтора');back.onclick=()=>error.bulk?$('errorsButton').onclick():showErrorRetry(error);const actions=element('div',undefined,'flex wrap');actions.append(send,back);const hint=element('p','Параметры применятся только к новой очереди. Основная задача и настройки проекта сохранятся.','sub');for(const node of [hint,estimate,actions,message])node.style.gridColumn='1 / -1';form.append(hint,estimate,actions,message);content.append(form);content.scrollTop=0;estimateNow();
+}
 
 async function showPreservedTranslation(row){
  if(dirty.size)throw Error('Сохраните или отмените правки');
@@ -91,7 +107,7 @@ async function showPreservedTranslation(row){
  content.append(element('p','Обработка без очереди не прерывает текущий запрос к модели: выбранная фраза пойдёт сразу после него.','sub'));
  dialog.showModal();$('infoClose').focus({preventScroll:true});content.scrollTop=0;
 }
-async function showPreservedManual(row){
+async function showPreservedManual(row,saveAction='translate-preserved'){
  await showRecordContext(row.id);$('infoTitle').textContent='Ручной перевод · контекст';
  const selected=$('contextSelected'),card=selected.querySelector('.context-card'),area=element('textarea');area.id='preservedManualText';area.value=row.text||row.source;area.rows=5;area.style.cssText='width:100%;box-sizing:border-box;margin-top:12px';area.setAttribute('aria-label','Ручной перевод выбранной фразы');
  card.lastChild.replaceWith(area);card.append(element('p','После сохранения фраза перейдёт в обычный текст проекта. Ручной перевод защищён от перезаписи ИИ.','sub'));
@@ -99,7 +115,52 @@ async function showPreservedManual(row){
  for(const b of $('infoContent').querySelectorAll('button'))if(b.textContent==='Показать больше контекста')b.remove();
  const save=element('button','Сохранить перевод');save.id='preservedManualSave';$('infoFooter').prepend(save);
  area.oninput=()=>dirty.add(row.id);
+ const message=element('p');message.setAttribute('role','status');card.append(message);
  const cleanup=()=>{dirty.delete(row.id);save.remove()};$('infoDialog').addEventListener('close',cleanup,{once:true});
- save.onclick=guard(async()=>{await request('translate-preserved',{project,id:row.id,revision:row.revision,mode:'manual',text:area.value});$('infoDialog').close();await refresh();await loadRows();toast('Ручной перевод сохранён и защищён')});
+ save.onclick=async()=>{try{save.disabled=true;await request(saveAction,{project,id:row.id,revision:row.revision,mode:'manual',text:area.value});$('infoDialog').close();await refresh();await loadRows();toast('Ручной перевод сохранён и защищён')}catch(e){modalError(e,message)}finally{save.disabled=false}};
  $('infoContent').scrollTop=Math.max(0,selected.offsetTop-$('infoContent').offsetTop-12);area.focus({preventScroll:true});
 }
+
+// Two-line previews with one expansion control; editors never scroll internally.
+const textPreviewStyle=element('style');textPreviewStyle.textContent=`
+.record .pair{align-items:start}
+.record .original,.record .translation{min-width:0;overflow-wrap:anywhere}
+.record .record-text-body{min-width:0;overflow:hidden;white-space:pre-wrap;overflow-wrap:anywhere}
+.record .record-text-body.is-clipped{-webkit-mask-image:linear-gradient(to bottom,#000 0%,#000 45%,transparent 100%);mask-image:linear-gradient(to bottom,#000 0%,#000 45%,transparent 100%)}
+.record .translation textarea{display:block;min-height:0!important;resize:none!important;overflow:hidden!important;white-space:pre-wrap;overflow-wrap:anywhere;scrollbar-width:none}
+.record .translation textarea::-webkit-scrollbar{display:none}
+.record .record-expand{display:block;margin:0 auto 10px;padding:4px 13px;background:transparent;border-color:transparent;color:var(--muted);font-size:12px}
+.record .record-expand:hover{background:#263239;color:var(--ink)}
+`;document.head.append(textPreviewStyle);
+const recordExpansion=new Map(),previewCards=new Map();
+function fitRecordPreview(card){
+ const preview=previewCards.get(card);if(!preview||!card.isConnected||!card.offsetWidth)return;
+ const {source,editor,target,button}=preview;const css=getComputedStyle(editor),sourceCss=getComputedStyle(source);const editorLine=parseFloat(css.lineHeight)||23,sourceLine=parseFloat(sourceCss.lineHeight)||23;
+ const border=parseFloat(css.borderTopWidth)+parseFloat(css.borderBottomWidth);const padding=parseFloat(css.paddingTop)+parseFloat(css.paddingBottom);
+ editor.style.minHeight='0';editor.style.height='0px';const fullEditorHeight=Math.max(editor.scrollHeight+border,editorLine+padding+border);
+ const editorLimit=editorLine*2+padding+border,sourceLimit=sourceLine*2;
+ const sourceOverflow=source.scrollHeight>sourceLimit+1,targetOverflow=fullEditorHeight>editorLimit+1,overflow=sourceOverflow||targetOverflow;
+ let expanded=recordExpansion.get(+card.dataset.id)||false;if(!overflow){expanded=false;recordExpansion.delete(+card.dataset.id)}
+ source.style.maxHeight=expanded?'none':sourceLimit+'px';editor.style.height=(expanded?fullEditorHeight:Math.min(fullEditorHeight,editorLimit))+'px';
+ source.classList.toggle('is-clipped',sourceOverflow&&!expanded);target.classList.toggle('is-clipped',targetOverflow&&!expanded);button.hidden=!overflow;
+ setText(button,expanded?'▴ Свернуть текст':'▾ Раскрыть текст');button.setAttribute('aria-expanded',String(expanded));button.setAttribute('aria-label',expanded?'Свернуть оригинал и перевод':'Раскрыть оригинал и перевод');
+}
+const previewObserver=new ResizeObserver(entries=>{for(const {target}of entries)fitRecordPreview(target.closest('.record'))});
+function attachRecordPreviews(){
+ for(const [card]of previewCards)if(!card.isConnected){previewObserver.unobserve(card.querySelector('.pair'));previewCards.delete(card)}
+ for(const card of $('rows').querySelectorAll('.record')){
+  if(!previewCards.has(card)){
+   const original=card.querySelector('.original'),editor=card.querySelector('textarea'),target=element('div',undefined,'record-text-body'),source=element('div',undefined,'record-text-body');
+   source.textContent=original.textContent;original.replaceChildren(source);editor.before(target);target.append(editor);
+   const button=element('button',undefined,'record-expand');button.type='button';card.querySelector('.pair').after(button);previewCards.set(card,{source,editor,target,button});
+   button.onclick=()=>{const id=+card.dataset.id;recordExpansion.set(id,!recordExpansion.get(id));if(recordExpansion.size>200)recordExpansion.delete(recordExpansion.keys().next().value);fitRecordPreview(card)};
+   editor.addEventListener('focus',()=>{if(!editor.readOnly){recordExpansion.set(+card.dataset.id,true);fitRecordPreview(card)}});
+   editor.addEventListener('input',()=>fitRecordPreview(card));previewObserver.observe(card.querySelector('.pair'));
+  }
+  fitRecordPreview(card);
+ }
+}
+const previewRender=renderRows;renderRows=function(...args){previewRender(...args);attachRecordPreviews()};
+
+const chainPanel=element('section');chainPanel.id='jobChain';projectTools.before(chainPanel);let chainVersion='';
+const chainRefresh=refresh;refresh=async function(...args){await chainRefresh(...args);const jobs=(snapshot?.jobs||[]).filter(j=>['running','queued','paused','waiting','held'].includes(j.state)).sort((a,b)=>a.id-b.id);const signature=JSON.stringify([project,jobs.map(j=>[j.id,j.state,j.done,j.total,j.settings])]);if(signature===chainVersion)return;chainVersion=signature;chainPanel.replaceChildren();chainPanel.hidden=!jobs.length;if(!jobs.length)return;chainPanel.append(element('h2','Очереди обработки · '+jobs.length));jobs.forEach((j,i)=>{const s=JSON.parse(j.settings||'{}'),card=element('div',undefined,'error'),title=element('strong',`${i+1}. ${s._retry_origin?'Повтор ошибок':'Основная очередь'} · №${j.id} · ${jobLabels[j.state]||j.state}`),description=element('div',`${{translate:'Перевод',review:'Редактура',cloud:'Проверка'}[j.stage]} · ${(j.provider==='cloud'?s.cloud_model:j.provider==='mcp'?s.mcp_model_hint:s.model)||'MCP'} · ${j.provider} · ${j.done}/${j.total} строк`,'sub'),parameters=element('div',`Контекст ${s.context||8192} · ответ ${s.max_output||1200} · соседей ${s.context_before??12} до / ${s.context_after??8} после · ${s.source_language||'English'} → ${s.target_language||'Russian'}`,'sub');card.append(title,description,parameters);chainPanel.append(card)})};

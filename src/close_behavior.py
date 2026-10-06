@@ -16,10 +16,12 @@ def stop_jobs(store,stopper=stop_worker):
     with store.launch_lock:
         store.closing=True
         with store.db() as db:
-            jobs=[dict(r) for r in db.execute("SELECT * FROM jobs WHERE state IN ('running','queued','paused')")]
+            jobs=[dict(r) for r in db.execute("SELECT * FROM jobs WHERE state IN ('running','queued','paused') OR worker_active=1")]
             db.execute("UPDATE jobs SET state='paused',error='Приложение закрыто; очередь сохранена' WHERE state IN ('running','queued')")
+            db.execute("UPDATE jobs SET state='held' WHERE state='waiting'")
         try:
             for job in jobs:stopper(store,job)
+            with store.db() as db:db.execute('UPDATE jobs SET worker_active=0 WHERE state IN (\'paused\',\'held\')')
         except Exception:
             store.closing=False;raise
     return len(jobs)

@@ -14,7 +14,7 @@
 <dialog id="infoDialog"><h1 id="infoTitle"></h1><div id="infoContent"></div><button data-close>Закрыть</button></dialog>
 <dialog id="exportDialog"><h1>Экспорт перевода</h1><p class="sub">Исходный игровой файл сохраняется. Для существующего Ren’Py слоя экспортируется .rpy с теми же идентификаторами; для остальных форматов — JSON-корпус. Проверьте экспорт перед установкой в игру.</p><input id="exportPath" placeholder="Полный путь нового файла"><button id="doExport" class="primary">Экспортировать</button><button data-close>Закрыть</button></dialog><div id="toast"></div>
 <script>
-const TOKEN='__TOKEN__';const $=id=>document.getElementById(id);const labels={empty:'Без перевода',translated:'Переведено',edited:'После редакции',verified:'Проверено',preserved:'Сохранено без перевода'};const jobLabels={queued:'В очереди',running:'Работает',paused:'На паузе',done:'DONE',incomplete:'INCOMPLETE',cancelled:'Отменено'};let project=0,file=0,offset=0,total=0,rows=[],snapshot=null,job=null,busy=false,lastStage='translate';const dirty=new Set();
+const TOKEN='__TOKEN__';const $=id=>document.getElementById(id);const labels={empty:'Без перевода',translated:'Переведено',edited:'После редакции',verified:'Проверено',preserved:'Сохранено без перевода'};const jobLabels={queued:'В очереди',running:'Работает',paused:'На паузе',done:'DONE',incomplete:'INCOMPLETE',cancelled:'Отменено',waiting:'Ожидает',held:'Ожидает продолжения'};let project=0,file=0,offset=0,total=0,rows=[],snapshot=null,job=null,busy=false,lastStage='translate';const dirty=new Set();
 function toast(message){$('toast').textContent=message;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',6500)}
 async function request(path,data){const r=await fetch('/api/'+path,{method:data?'POST':'GET',headers:{'X-Studio-Token':TOKEN,'Content-Type':'application/json'},body:data?JSON.stringify(data):undefined});const value=await r.json();if(!r.ok)throw Error(value.error||'Ошибка запроса');return value}
 function guard(fn){return async(...args)=>{try{await fn(...args)}catch(e){toast(e.message)}}}
@@ -37,7 +37,7 @@ async function refresh(initial=false){
   setText('errorsButton','Ошибки этого проекта · '+(snapshot.errors||0));
   const sv=JSON.stringify(snapshot.counts);
   if(sv!==statsVersion){if(!$('stats').children.length)$('stats').replaceChildren(...['empty','translated','edited','verified'].map(s=>{let d=element('div',undefined,'stat '+s);d.dataset.status=s;d.append(element('b',snapshot.counts[s]||0),element('span',labels[s]));return d}));for(const stat of $('stats').children)setText(stat.querySelector('b'),snapshot.counts[stat.dataset.status]||0);statsVersion=sv}
-  job=snapshot.jobs[0]||null;setText('jobState',job?jobLabels[job.state]:'Нет задачи');
+  job=snapshot.jobs.find(j=>['running','queued','paused'].includes(j.state))||snapshot.jobs.find(j=>j.state==='held')||snapshot.jobs.find(j=>j.state!=='waiting')||null;setText('jobState',job?jobLabels[job.state]:'Нет задачи');
   $('progress').max=job?.total||1;$('progress').value=job?.done||0;
   setText('progressText',job?`${job.done} / ${job.total} · ${job.stage} · ${job.error||job.provider}${job.rate?' · '+job.rate.toFixed(1)+' строк/мин':''}${job.state==='running'&&job.fragment_total?' · частей '+job.fragment_done+'/'+job.fragment_total:''}`:'Готово к работе');
   $('pause').disabled=!job||job.state!=='running';$('resume').disabled=!job||job.state!=='paused';$('cancel').disabled=!job||!['running','paused','queued'].includes(job.state);

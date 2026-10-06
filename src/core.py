@@ -135,6 +135,8 @@ class Store:
             if 'sampling' not in columns:db.execute('ALTER TABLE mcp_connections ADD COLUMN sampling INTEGER DEFAULT 0')
             if 'model' not in columns:db.execute("ALTER TABLE mcp_connections ADD COLUMN model TEXT DEFAULT ''")
             job_columns={r[1] for r in db.execute('PRAGMA table_info(jobs)')}
+            if 'worker_active' not in job_columns:db.execute('ALTER TABLE jobs ADD COLUMN worker_active INTEGER DEFAULT 0')
+            if 'budget_json' not in {r[1] for r in db.execute('PRAGMA table_info(errors)')}:db.execute("ALTER TABLE errors ADD COLUMN budget_json TEXT DEFAULT '{}'")
             for name,definition in [('fragment_done','INTEGER DEFAULT 0'),('fragment_total','INTEGER DEFAULT 0'),('fragment_preview',"TEXT DEFAULT ''")]:
                 if name not in job_columns:db.execute(f'ALTER TABLE jobs ADD COLUMN {name} {definition}')
             if 'finished_at' not in {r[1] for r in db.execute('PRAGMA table_info(queue)')}:
@@ -189,7 +191,7 @@ class Store:
     def archive_completed(self,editing_project=0):
         with self.db() as db:
             db.execute("UPDATE projects SET keep_visible=0 WHERE EXISTS(SELECT 1 FROM files f JOIN records r ON r.file=f.id WHERE f.project=projects.id AND r.status='empty')")
-            db.execute("UPDATE projects SET hidden=1,completed=1 WHERE id<>? AND hidden=0 AND keep_visible=0 AND deleting=0 AND EXISTS(SELECT 1 FROM jobs completed_job WHERE completed_job.project=projects.id AND completed_job.stage='translate' AND completed_job.state='done') AND EXISTS(SELECT 1 FROM files f JOIN records r ON r.file=f.id WHERE f.project=projects.id) AND NOT EXISTS(SELECT 1 FROM files f JOIN records r ON r.file=f.id WHERE f.project=projects.id AND r.status='empty') AND NOT EXISTS(SELECT 1 FROM jobs j WHERE j.project=projects.id AND j.state IN ('queued','running','paused'))",(editing_project,))
+            db.execute("UPDATE projects SET hidden=1,completed=1 WHERE id<>? AND hidden=0 AND keep_visible=0 AND deleting=0 AND EXISTS(SELECT 1 FROM jobs completed_job WHERE completed_job.project=projects.id AND completed_job.stage='translate' AND completed_job.state='done') AND EXISTS(SELECT 1 FROM files f JOIN records r ON r.file=f.id WHERE f.project=projects.id) AND NOT EXISTS(SELECT 1 FROM files f JOIN records r ON r.file=f.id WHERE f.project=projects.id AND r.status='empty') AND NOT EXISTS(SELECT 1 FROM jobs j WHERE j.project=projects.id AND j.state IN ('queued','running','paused','waiting','held'))",(editing_project,))
     def complete_project(self,pid):
         with self.db() as db:
             if not db.execute('SELECT id FROM projects WHERE id=? AND deleting=0',(pid,)).fetchone():raise ValueError('Проект не найден')
@@ -340,7 +342,7 @@ class Store:
             db.executemany('DELETE FROM record_marks WHERE record=?',[(rid,) for rid in ids])
             db.executemany('UPDATE records SET revision=revision+1 WHERE id=?',[(rid,) for rid in ids])
         return {'cleared':len(ids)}
-    def create_job(self, project, stage, provider, settings, file=None, retry=False, mark_kind=None,allow_manual=False,record_ids=None):
+    def create_job(self, project, stage, provider, settings, file=None, retry=False, mark_kind=None,allow_manual=False,record_ids=None,defer=False):
         if stage not in {'translate','review','cloud'} or provider not in {'local','cloud','mcp'}: raise ValueError('Некорректный режим')
         if stage=='cloud' and provider not in {'cloud','mcp'}: raise ValueError('Зелёная проверка требует внешнего провайдера')
         from speaker_context import neighbor_settings
@@ -363,19 +365,30 @@ class Store:
             query += ' AND r.status IN '+ ('(\'empty\')' if stage=='translate' else "('translated','edited')" if stage=='cloud' else "('translated')")
         if retry: query+=' AND EXISTS(SELECT 1 FROM errors e WHERE e.record=r.id AND e.resolved=0)'
         with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
             if not db.execute('SELECT id FROM projects WHERE id=? AND deleting=0',(project,)).fetchone():raise ValueError('Проект удалён или удаляется')
-            active=db.execute("SELECT id FROM jobs WHERE project=? AND state IN ('queued','running','paused')",(project,)).fetchone()
-            if active: raise ValueError('Завершите или отмените текущую задачу перед новой')
+            active=db.execute("SELECT id FROM jobs WHERE project=? AND (state IN ('queued','running','paused','waiting','held') OR worker_active=1)",(project,)).fetchone()
+            if active and not defer: raise ValueError('Завершите или отмените текущую задачу перед новой')
             ids=[r[0] for r in db.execute(query+' ORDER BY r.file,r.position',args)]
             if not ids: raise ValueError('Нет подходящих строк (ручные правки защищены)')
             settings.setdefault('cache_namespace',f'project:{project}')
             jid=self.next_id(db,'jobs')
-            db.execute('INSERT INTO jobs(id,project,stage,provider,settings,state,total,created) VALUES (?,?,?,?,?,?,?,?)',(jid,project,stage,provider,dump(settings),'queued',len(ids),now()))
+            db.execute('INSERT INTO jobs(id,project,stage,provider,settings,state,total,created) VALUES (?,?,?,?,?,?,?,?)',(jid,project,stage,provider,dump(settings),'waiting' if defer else 'queued',len(ids),now()))
             db.executemany('INSERT INTO queue(job,record) VALUES (?,?)',[(jid,r) for r in ids]); return jid
     def error(self, job, record, message):
         with self.db() as db:
             p=db.execute('SELECT project FROM jobs WHERE id=?',(job,)).fetchone()[0]
             db.execute('INSERT INTO errors(project,job,record,message,at) VALUES (?,?,?,?,?)',(p,job,record,message[:2000],now()))
+        if record:
+            try:
+                from error_workflow import budget
+                with self.db() as db:
+                    j=db.execute('SELECT * FROM jobs WHERE id=?',(job,)).fetchone();settings=json.loads(j['settings'])
+                    override=db.execute('SELECT settings FROM queue_overrides WHERE job=? AND record=?',(job,record)).fetchone()
+                    if override:settings.update(json.loads(override[0]))
+                estimate=budget(self,p,record,j['stage'],settings)
+                with self.db() as db:db.execute('UPDATE errors SET budget_json=? WHERE job=? AND record=? AND resolved=0',(dump(estimate),job,record))
+            except (ValueError,KeyError,TypeError):pass
     def export(self, fid, destination, apply=False):
         with self.db() as db:
             f=dict(db.execute('SELECT * FROM files WHERE id=?',(fid,)).fetchone()); records=[dict(r) for r in db.execute('SELECT * FROM records WHERE file=? ORDER BY position',(fid,))]
