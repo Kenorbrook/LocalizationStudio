@@ -73,6 +73,32 @@ def fixture_processes(home):
     ]
 
 
+def fixture_browser_processes(home):
+    command = "Get-CimInstance Win32_Process -Filter \"Name='msedgewebview2.exe'\" | Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress"
+    result = subprocess.run(
+        ["powershell.exe", "-NoProfile", "-Command", command],
+        capture_output=True,
+        text=True,
+        creationflags=subprocess.CREATE_NO_WINDOW,
+        timeout=10,
+    )
+    values = json.loads(result.stdout.lstrip("\ufeff") or "[]")
+    if isinstance(values, dict):
+        values = [values]
+    owners = {
+        row["ProcessId"]
+        for row in values
+        if str(home.resolve()).casefold() in (row.get("CommandLine") or "").casefold()
+    }
+    while True:
+        children = {
+            row["ProcessId"] for row in values if row["ParentProcessId"] in owners
+        }
+        if children <= owners:
+            return owners
+        owners.update(children)
+
+
 def main():
     parent = ROOT / "qa-updater"
     home = parent / str(time.time_ns())
@@ -204,6 +230,7 @@ def main():
         )
         print(json.dumps(summary))
     finally:
+        browser_children = fixture_browser_processes(home)
         if gui.poll() is None:
             close_window(gui.pid)
             gui.wait(timeout=20)
@@ -213,6 +240,8 @@ def main():
             close_window(pid)
             from updater import wait_for_exit
 
+            wait_for_exit(pid, 20)
+        for pid in browser_children:
             wait_for_exit(pid, 20)
         if home.resolve().parent != parent.resolve():
             raise RuntimeError("Unexpected fixture path")

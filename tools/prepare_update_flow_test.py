@@ -11,7 +11,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from core import Store
 from update_package import reject_links
-from prepare_updater_test import close_window, fixture_processes
+from prepare_updater_test import (
+    close_window,
+    fixture_processes,
+    fixture_browser_processes,
+)
 from updater import wait_for_exit
 
 
@@ -120,11 +124,14 @@ setTimeout(async()=>{try{
         )
         print(json.dumps(summary))
     finally:
+        browser_children = fixture_browser_processes(home)
         if gui.poll() is None:
             close_window(gui.pid)
             gui.wait(timeout=20)
         for owner in fixture_processes(home):
             close_window(owner)
+            wait_for_exit(owner, 20)
+        for owner in browser_children:
             wait_for_exit(owner, 20)
         if fixture.resolve().parent != parent.resolve():
             raise RuntimeError("Unexpected fixture path")
