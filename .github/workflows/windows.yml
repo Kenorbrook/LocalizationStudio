@@ -1,0 +1,33 @@
+name: Windows tests and build
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Prepare environment
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          ./.venv/Scripts/python.exe -m pip install -r requirements-dev.txt
+      - name: Test
+        shell: pwsh
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          ./.venv/Scripts/python.exe -m unittest discover -s src -p 'test_*.py'
+          if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
+      - name: Build
+        shell: pwsh
+        run: ./build.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LocalizationStudio-windows-x64
+          path: release/LocalizationStudio/

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "localization-studio": {
+      "command": "C:\\path\\to\\LocalizationStudio\\LocalizationWorker.exe",
+      "args": ["--mcp", "--db", "C:\\path\\to\\LocalizationStudio\\data\\studio.sqlite3"]
+    }
+  }
+}

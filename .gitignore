@@ -1,0 +1,21 @@
+# Only reviewed application sources and documentation are published.
+/*
+!/.gitignore
+!/README.md
+!/build.ps1
+!/requirements.txt
+!/requirements-dev.txt
+!/CHANGELOG.md
+!/THIRD_PARTY_NOTICES.md
+!/mcp_config.example.json
+!/src/
+!/examples/
+!/.github/
+__pycache__/
+*.py[cod]
+*.sqlite*
+*.db
+*.log
+*.token
+.env*
+localization_config.json

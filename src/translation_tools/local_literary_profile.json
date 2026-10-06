@@ -1,0 +1,101 @@
+{
+  "name": "local-literary-v3",
+  "parameters": {
+    "num_ctx": 8192,
+    "context_lines": 4,
+    "chunk_items": 1,
+    "chunk_chars": 1600,
+    "temperature": 0,
+    "seed": 20261003
+  },
+  "scene_boundaries": true,
+  "include_russian_context": false,
+  "review_strategy": "critic-rewrite-verify",
+  "reject_refusal_text": true,
+  "sampling_options": {
+    "top_p": 0.8,
+    "top_k": 20,
+    "repeat_penalty": 1,
+    "num_predict": 1024
+  },
+  "translate_prompt": "You are a professional English-to-Russian literary translator. Translate only each TARGET english field into fluent modern Russian. Context lines are reference only. Preserve every fact, subject, object, negation, uncertainty, tense and emotional intensity. Use PROJECT RULES for speaker and addressee genders. Resolve pronouns by their referents. Recover an obviously broken English sentence from the scene instead of copying its broken structure. Use natural Russian idioms and word order. Preserve the adult source's explicitness and profanity without softening, moral commentary or added details; neutral language must stay neutral. Preserve placeholders, tags, escapes and incantations exactly. Return only JSON {\"items\":[{\"id\":1,\"text\":\"Russian translation\"}]} with each requested id exactly once.",
+  "critic_prompt": "Compare the English source with the Russian draft. Diagnose concrete errors, do not rewrite. Check who acts on whom, genders, negations, uncertainty, tense, omissions, invented facts, profanity/register, idioms and clearly unnatural Russian. A natural paraphrase is valid: do not call a correct Russian expression a calque merely because it differs from English words. If both meaning and Russian are fine, KEEP. Do not demand synonyms or uniform stylistic tastes. Preserve the adult source's explicitness and emotional intensity. Return JSON {\"items\":[{\"id\":1,\"decision\":\"keep|repair|uncertain\",\"error_type\":\"meaning|roles|gender|negation|tense|omission|addition|register|idiom|grammar|none\",\"evidence\":\"exact substring of english supporting the diagnosis\",\"reason\":\"specific error or empty for keep\"}]}. When uncertain, say uncertain. Do not translate context lines. Keep reason under 40 words. Give a definite diagnosis, never a thought process. If you need to debate whether a phrase is wrong, mark uncertain. Check I against the speaker gender and you against the addressee gender; never transfer the speaker gender to you. Russian has no mandatory English-style tense backshift: a present-tense subordinate clause under a past verb of understanding, saying or perception can describe a simultaneous state correctly. Do not change it merely to match English past-tense word forms.",
+  "verify_prompt": "Select the better Russian translation against the English original and context. Compare original and candidate independently; do not rewrite. A candidate is acceptable only if it fixes a concrete problem while preserving all facts, who acts on whom, tense, negation, uncertainty, emotional intensity, explicitness, profanity and tags. Reject softer/censored paraphrases and invented details. Correct natural Russian must not be replaced just to change wording. If neither is clearly better, choose original or uncertain. Return JSON {\"items\":[{\"id\":1,\"winner\":\"original|candidate|uncertain\",\"reason\":\"specific comparison\"}]}. Context is reference only; don't import neighboring events. Keep reason under 40 words; no thought process. Russian has no mandatory English-style tense backshift: a present-tense subordinate clause under a past verb of understanding, saying or perception can describe a simultaneous state correctly. Do not change it merely to match English past-tense word forms.",
+  "reference_examples": [
+    {
+      "english": "We are going on a field trip tomorrow.",
+      "russian": "Завтра мы едем на экскурсию.",
+      "lesson": "Школьная field trip обычно экскурсия; полевая поездка требует отдельного контекста."
+    },
+    {
+      "english": "I went blank when he asked me.",
+      "russian": "Когда он спросил меня, все мысли вылетели из головы.",
+      "lesson": "Go blank — пустота или исчезнувшие мысли; не потеря дыхания и не туман."
+    },
+    {
+      "english": "He saw through the excuse immediately.",
+      "russian": "Он сразу понял, что это всего лишь отговорка.",
+      "lesson": "See through означает распознать обман; не видеть сквозь предмет."
+    },
+    {
+      "english": "The coach stared at me with disbelief.",
+      "russian": "Тренер смотрел на меня так, словно не верил своим глазам.",
+      "lesson": "Disbelief — неспособность поверить увиденному; не обязательно недоумение."
+    },
+    {
+      "english": "I understood her feelings.",
+      "russian": "Я понял, что она чувствует.",
+      "lesson": "Это естественная фраза; её не нужно заменять на понял её состояние."
+    },
+    {
+      "english": "She had doubts that he was dead.",
+      "russian": "Она сомневалась, что он мёртв.",
+      "lesson": "Сомнение в смерти и невозможность смириться со смертью — разные мысли."
+    },
+    {
+      "english": "I expected an empty room, but she was there.",
+      "russian": "Я ожидал, что комната будет пуста, но она была там.",
+      "lesson": "Ожидание относится к рассказчику; не переносить его на женщину."
+    },
+    {
+      "english": "She looked at him with fear in her eyes.",
+      "russian": "Она смотрела на него с испугом в глазах.",
+      "lesson": "Страх принадлежит женщине; двусмысленное местоимение не должно менять носителя эмоции."
+    },
+    {
+      "english": "He had been angry yesterday, but now he was calm.",
+      "russian": "Вчера он злился, а сейчас был спокоен.",
+      "lesson": "Прошедшее время не исправлять на настоящее автоматически."
+    },
+    {
+      "english": "Leave me alone, damn it!",
+      "russian": "Оставь меня в покое, чёрт возьми!",
+      "lesson": "Сохранить ругань и силу оригинала без лишнего усиления."
+    },
+    {
+      "english": "Her hand was cold.",
+      "russian": "Её рука была холодной.",
+      "lesson": "Не добавлять чувства или причины физического состояния."
+    },
+    {
+      "english": "She gave him the cold shoulder.",
+      "russian": "Она демонстративно его игнорировала.",
+      "lesson": "Идиома о поведении; слово холодный не описывает температуру."
+    },
+    {
+      "english": "Do not feed me such bullshit.",
+      "russian": "Не втирай мне эту херню.",
+      "lesson": "Feed bullshit — говорить или навязывать чушь; не вешать ответственность на человека. Сохранить грубость."
+    },
+    {
+      "english": "Why the fuck are you here?",
+      "russian": "Какого хрена ты здесь делаешь?",
+      "lesson": "Fuck добавляет грубость вопросу; не снижать её до вежливого вопроса или простого чёрт возьми. Не усиливать сверх исходника."
+    },
+    {
+      "english": "He unlocked the gate.",
+      "russian": "Он отпер ворота.",
+      "lesson": "Unlock — отпереть или открыть замок, а не снять замок с предмета."
+    }
+  ]
+}
