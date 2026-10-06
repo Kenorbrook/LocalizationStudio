@@ -44,7 +44,7 @@ class CloseController:
             from System.Drawing import SystemIcons
             self.tray=NotifyIcon();self.tray.Icon=SystemIcons.Application;self.tray.Text='Localization Studio';self.tray.Visible=False
             menu=ContextMenuStrip();menu.Items.Add('Открыть').Click+=lambda *_:self.show()
-            menu.Items.Add('Сбросить запомненный выбор').Click+=lambda *_:self.reset_close_choice()
+            menu.Items.Add('Снова спрашивать при закрытии').Click+=lambda *_:self.reset_close_choice()
             menu.Items.Add('Закрыть и остановить перевод').Click+=lambda *_:self.request('exit')
             self.tray.ContextMenuStrip=menu;self.tray.DoubleClick+=lambda *_:self.show()
         self.ui(create)
