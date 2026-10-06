@@ -1,6 +1,7 @@
 (async()=>{
 try{
 const results={};const check=(key,value)=>{results[key]=!!value;if(!value)throw Error(key)};
+const updateInfo=await window.pywebview.api.get_update_state();check('updateVersion',updateInfo.current==='0.2.0');check('updatesOfflineByDefault',Object.values(updateInfo.preferences).every(value=>value===false));check('updatesInSettings',$('setupCard').contains($('updatesMenu'))&&$('updatesMenu').firstElementChild.tagName==='SUMMARY');await refreshUpdates();check('updatesActions',!$('checkUpdates').disabled&&$('downloadUpdate').hidden&&$('installUpdate').hidden&&$('updateVersion').textContent.includes('0.2.0'));
 await refresh(true);check('homeFirst',viewMode==='home'&&!$('projectHome').hidden&&$('textPane').hidden);
 check('errorsInProject',$('projectHome').contains($('errorsButton'))&&!document.querySelector('header').contains($('errorsButton')));
 check('twoModes',!!$('viewAll')&&!!$('viewQueue'));

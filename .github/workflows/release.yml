@@ -1,0 +1,47 @@
+name: Publish verified Windows release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          ./.venv/Scripts/python.exe -m pip install -r requirements-dev.txt
+      - name: Validate
+        shell: pwsh
+        run: |
+          $env:PYTHONIOENCODING = 'utf-8'
+          ./.venv/Scripts/python.exe -m unittest discover -s tests -t . -p 'test_*.py'
+          if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
+          ./.venv/Scripts/python.exe -m black --check src tests tools packaging/LocalizationStudio.spec packaging/LocalizationUpdater.spec
+          if ($LASTEXITCODE -ne 0) { throw 'Formatting failed' }
+          ./.venv/Scripts/python.exe tools/format_ui.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'UI formatting failed' }
+          $version = ./.venv/Scripts/python.exe -c "import sys;sys.path.insert(0,'src');from version import VERSION;print(VERSION)"
+          if ($env:GITHUB_REF_NAME -ne "v$version") { throw 'Tag does not match source version' }
+      - name: Build and package
+        shell: pwsh
+        run: |
+          ./build.ps1
+          ./.venv/Scripts/python.exe tools/package_release.py
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging failed' }
+      - name: Publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          Copy-Item "release-assets/SHA256SUMS-$env:GITHUB_REF_NAME.txt" "release-assets/SHA256SUMS.txt"
+          gh release create $env:GITHUB_REF_NAME "release-assets/LocalizationStudio-$env:GITHUB_REF_NAME-windows-x64.zip" "release-assets/SHA256SUMS.txt" --title "Localization Studio $env:GITHUB_REF_NAME" --notes-file docs/RELEASE_NOTES.md --verify-tag

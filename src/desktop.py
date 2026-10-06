@@ -17,6 +17,7 @@ def main():
     parser.add_argument("--mcp", action="store_true")
     parser.add_argument("--smoke-report")
     parser.add_argument("--ui-test-script")
+    parser.add_argument("--resume-update")
     args = parser.parse_args()
     store = Store(args.db)
     if args.worker:
@@ -60,9 +61,12 @@ def main():
         sys.stdout = (logdir / "desktop.log").open("a", encoding="utf-8", buffering=1)
     if sys.stderr is None:
         sys.stderr = sys.stdout
-    from close_behavior import CloseController, CloseApi
+    from close_behavior import CloseController
+    from desktop_api import DesktopApi
+    from update_controller import UpdateController, resume_after_update
 
     close_controller = CloseController(store)
+    updates = UpdateController(store, close_controller)
     ready = threading.Event()
     servers = []
     failures = []
@@ -89,13 +93,37 @@ def main():
         height=940,
         min_size=(1000, 650),
         background_color="#11171b",
-        js_api=CloseApi(close_controller),
+        js_api=DesktopApi(close_controller, updates),
     )
     close_controller.window = window
     window.events.closing += close_controller.on_closing
 
     def loaded():
         close_controller.initialize()
+        if args.resume_update:
+            try:
+                resume_after_update(store, args.resume_update)
+                result = json.loads(
+                    Path(args.resume_update)
+                    .with_name("result.json")
+                    .read_text(encoding="utf-8")
+                )
+                updates._set(
+                    phase="current" if result.get("installed") else "error",
+                    message=(
+                        "Обновлено до версии " + updates.snapshot()["current"]
+                        if result.get("installed")
+                        else "Обновление не установлено: "
+                        + result.get("error", "неизвестная ошибка")
+                    ),
+                )
+            except Exception as error:
+                updates._set(
+                    phase="error",
+                    message="Не удалось восстановить очереди после обновления: "
+                    + str(error),
+                )
+        updates.initialize()
         if args.ui_test_script:
             window.evaluate_js(Path(args.ui_test_script).read_text(encoding="utf-8"))
             for attempt in range(240):
@@ -148,6 +176,7 @@ def main():
             storage_path=str(APP_HOME / "webview-cache"),
         )
     finally:
+        updates.dispose()
         close_controller.dispose()
         server.shutdown()
         server.server_close()

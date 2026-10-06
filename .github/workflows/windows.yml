@@ -27,7 +27,7 @@ jobs:
       - name: Check Python formatting
         shell: pwsh
         run: |
-          ./.venv/Scripts/python.exe -m black --check src tests tools packaging/LocalizationStudio.spec
+          ./.venv/Scripts/python.exe -m black --check src tests tools packaging/LocalizationStudio.spec packaging/LocalizationUpdater.spec
           if ($LASTEXITCODE -ne 0) { throw 'Formatting failed' }
       - uses: actions/setup-node@v4
         with:
