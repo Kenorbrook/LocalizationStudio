@@ -1,7 +1,7 @@
 function ensureBlockPicker(active, f) {
   const existing = active.querySelector("select");
   if (existing) {
-    existing.value = offset;
+    existing.value = studioState.offset;
     return;
   }
   const select = element("select");
@@ -17,14 +17,14 @@ function ensureBlockPicker(active, f) {
     o.value = i * 50;
     select.append(o);
   }
-  select.value = offset;
+  select.value = studioState.offset;
   select.onclick = (e) => e.stopPropagation();
   select.onchange = guard(async () => {
-    if (dirty.size) {
-      select.value = offset;
+    if (studioState.dirty.size) {
+      select.value = studioState.offset;
       throw Error("Сохраните правки перед сменой блока");
     }
-    offset = +select.value;
+    studioState.offset = +select.value;
     $("search").value = "";
     $("status").value = "";
     await loadRows();
@@ -35,7 +35,7 @@ studioLifecycle.register(
   "refresh",
   "baseRefresh",
   async ({ initial, previousProject: oldProject }) => {
-    const f = snapshot.files.find((x) => x.id === file);
+    const f = studioState.snapshot.files.find((x) => x.id === studioState.file);
     const active = document.querySelector(".file.active");
     if (f && active) ensureBlockPicker(active, f);
   },
@@ -43,7 +43,7 @@ studioLifecycle.register(
 const proposalsButton = element("button", "Предложения MCP");
 $("errorsButton").before(proposalsButton);
 proposalsButton.onclick = guard(async () => {
-  const proposals = await request("proposals?project=" + project);
+  const proposals = await request("proposals?project=" + studioState.project);
   $("infoTitle").textContent = "Предложения внешней ИИ";
   $("infoContent").replaceChildren();
   for (const p of proposals) {
@@ -85,17 +85,17 @@ proposalsButton.onclick = guard(async () => {
 // The initial timer skips focused editors. A second lightweight poll handles that case.
 setInterval(async () => {
   if (
-    busy ||
+    studioState.busy ||
     document.querySelector("dialog[open]") ||
     document.activeElement.tagName !== "TEXTAREA"
   )
     return;
-  busy = true;
+  studioState.busy = true;
   try {
     await refresh();
   } catch {
   } finally {
-    busy = false;
+    studioState.busy = false;
   }
 }, 2500);
 // Text can be supplied without creating a file outside the application first.
@@ -122,7 +122,7 @@ $("doImport").onclick = guard(async () => {
     });
   const messages = [];
   if (files.length) {
-    const r = await request("upload", { project, files });
+    const r = await request("upload", { project: studioState.project, files });
     added += r.added;
     messages.push(...r.errors.map((e) => e.message));
   }
@@ -131,7 +131,7 @@ $("doImport").onclick = guard(async () => {
     .map((x) => x.trim())
     .filter(Boolean);
   if (paths.length) {
-    const r = await request("import", { project, paths });
+    const r = await request("import", { project: studioState.project, paths });
     added += r.added;
     messages.push(...r.errors.map((e) => e.message));
   }

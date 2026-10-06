@@ -8,6 +8,9 @@ const studioLifecycle = (() => {
     callbacks.set(name, callback);
     hooks.set(phase, callbacks);
   }
+  function notify(phase, context) {
+    for (const callback of hooks.get(phase)?.values() || []) callback(context);
+  }
   async function refresh(context) {
     for (const callback of hooks.get("refresh")?.values() || [])
       await callback(context);
@@ -29,5 +32,5 @@ const studioLifecycle = (() => {
   function page(mode) {
     return pages.get(mode)?.();
   }
-  return { register, refresh, render, settings, registerPage, page };
+  return { register, notify, refresh, render, settings, registerPage, page };
 })();

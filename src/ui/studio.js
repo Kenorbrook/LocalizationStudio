@@ -17,16 +17,6 @@ const jobLabels = {
   waiting: "Ожидает",
   held: "Ожидает продолжения",
 };
-let project = 0,
-  file = 0,
-  offset = 0,
-  total = 0,
-  rows = [],
-  snapshot = null,
-  job = null,
-  busy = false,
-  lastStage = "translate";
-const dirty = new Set();
 function toast(message) {
   $("toast").textContent = message;
   $("toast").style.display = "block";
@@ -89,16 +79,19 @@ let projectVersion = "",
   statsVersion = "",
   liveVersion = "";
 async function refreshState(initial = false) {
-  snapshot = await request(
-    "state?project=" + project + "&editing=" + (dirty.size ? 1 : 0),
+  studioState.snapshot = await request(
+    "state?project=" +
+      studioState.project +
+      "&editing=" +
+      (studioState.dirty.size ? 1 : 0),
   );
-  project = snapshot.project || 0;
+  studioState.project = studioState.snapshot.project || 0;
   const pv = JSON.stringify(
-    snapshot.projects.map((p) => [p.id, p.name, p.active]),
+    studioState.snapshot.projects.map((p) => [p.id, p.name, p.active]),
   );
   if (pv !== projectVersion) {
     $("projects").replaceChildren(
-      ...snapshot.projects.map((p) => {
+      ...studioState.snapshot.projects.map((p) => {
         let o = element("option", (p.active ? "⟳ " : "") + p.name);
         o.value = p.id;
         return o;
@@ -106,22 +99,24 @@ async function refreshState(initial = false) {
     );
     projectVersion = pv;
   }
-  $("projects").value = project;
-  if (initial && project)
-    loadSettings(snapshot.projects.find((p) => p.id == project));
-  if (!file && snapshot.files.length) {
-    file = snapshot.files[0].id;
+  $("projects").value = studioState.project;
+  if (initial && studioState.project)
+    loadSettings(
+      studioState.snapshot.projects.find((p) => p.id == studioState.project),
+    );
+  if (!studioState.file && studioState.snapshot.files.length) {
+    studioState.file = studioState.snapshot.files[0].id;
     await loadRows();
   }
-  const fv = JSON.stringify([file, snapshot.files]);
+  const fv = JSON.stringify([studioState.file, studioState.snapshot.files]);
   if (fv !== fileVersion) {
     const scroll = $("files").parentElement.scrollTop;
     $("files").replaceChildren(
-      ...snapshot.files.map((f) => {
+      ...studioState.snapshot.files.map((f) => {
         let e = element(
           "div",
           undefined,
-          "file" + (f.id === file ? " active" : ""),
+          "file" + (f.id === studioState.file ? " active" : ""),
         );
         let name = f.path.split(/[\\/]/).pop();
         e.append(
@@ -129,24 +124,27 @@ async function refreshState(initial = false) {
           element("small", f.total + " строк · проверено " + (f.verified || 0)),
         );
         e.onclick = guard(async () => {
-          if (dirty.size) {
+          if (studioState.dirty.size) {
             toast("Сохраните правки перед сменой файла");
             return;
           }
-          file = f.id;
-          offset = 0;
+          studioState.file = f.id;
+          studioState.offset = 0;
           await refresh();
           await loadRows();
         });
-        if (f.id === file) ensureBlockPicker(e, f);
+        if (f.id === studioState.file) ensureBlockPicker(e, f);
         return e;
       }),
     );
     $("files").parentElement.scrollTop = scroll;
     fileVersion = fv;
   }
-  setText("errorsButton", "Ошибки этого проекта · " + (snapshot.errors || 0));
-  const sv = JSON.stringify(snapshot.counts);
+  setText(
+    "errorsButton",
+    "Ошибки этого проекта · " + (studioState.snapshot.errors || 0),
+  );
+  const sv = JSON.stringify(studioState.snapshot.counts);
   if (sv !== statsVersion) {
     if (!$("stats").children.length)
       $("stats").replaceChildren(
@@ -154,7 +152,7 @@ async function refreshState(initial = false) {
           let d = element("div", undefined, "stat " + s);
           d.dataset.status = s;
           d.append(
-            element("b", snapshot.counts[s] || 0),
+            element("b", studioState.snapshot.counts[s] || 0),
             element("span", labels[s]),
           );
           return d;
@@ -163,34 +161,42 @@ async function refreshState(initial = false) {
     for (const stat of $("stats").children)
       setText(
         stat.querySelector("b"),
-        snapshot.counts[stat.dataset.status] || 0,
+        studioState.snapshot.counts[stat.dataset.status] || 0,
       );
     statsVersion = sv;
   }
-  job =
-    snapshot.jobs.find((j) =>
+  studioState.job =
+    studioState.snapshot.jobs.find((j) =>
       ["running", "queued", "paused"].includes(j.state),
     ) ||
-    snapshot.jobs.find((j) => j.state === "held") ||
-    snapshot.jobs.find((j) => j.state !== "waiting") ||
+    studioState.snapshot.jobs.find((j) => j.state === "held") ||
+    studioState.snapshot.jobs.find((j) => j.state !== "waiting") ||
     null;
-  setText("jobState", job ? jobLabels[job.state] : "Нет задачи");
-  $("progress").max = job?.total || 1;
-  $("progress").value = job?.done || 0;
+  setText(
+    "jobState",
+    studioState.job ? jobLabels[studioState.job.state] : "Нет задачи",
+  );
+  $("progress").max = studioState.job?.total || 1;
+  $("progress").value = studioState.job?.done || 0;
   setText(
     "progressText",
-    job
-      ? `${job.done} / ${job.total} · ${job.stage} · ${job.error || job.provider}${job.rate ? " · " + job.rate.toFixed(1) + " строк/мин" : ""}${job.state === "running" && job.fragment_total ? " · частей " + job.fragment_done + "/" + job.fragment_total : ""}`
+    studioState.job
+      ? `${studioState.job.done} / ${studioState.job.total} · ${studioState.job.stage} · ${studioState.job.error || studioState.job.provider}${studioState.job.rate ? " · " + studioState.job.rate.toFixed(1) + " строк/мин" : ""}${studioState.job.state === "running" && studioState.job.fragment_total ? " · частей " + studioState.job.fragment_done + "/" + studioState.job.fragment_total : ""}`
       : "Готово к работе",
   );
-  $("pause").disabled = !job || job.state !== "running";
-  $("resume").disabled = !job || job.state !== "paused";
+  $("pause").disabled = !studioState.job || studioState.job.state !== "running";
+  $("resume").disabled = !studioState.job || studioState.job.state !== "paused";
   $("cancel").disabled =
-    !job || !["running", "paused", "queued"].includes(job.state);
-  const r = job?.current ? await request("current?id=" + job.current) : null;
+    !studioState.job ||
+    !["running", "paused", "queued"].includes(studioState.job.state);
+  const r = studioState.job?.current
+    ? await request("current?id=" + studioState.job.current)
+    : null;
   const partial =
-    job && ["running", "paused"].includes(job.state) && job.fragment_total
-      ? job.fragment_preview
+    studioState.job &&
+    ["running", "paused"].includes(studioState.job.state) &&
+    studioState.job.fragment_total
+      ? studioState.job.fragment_preview
       : "";
   const lv = JSON.stringify(
     r
@@ -199,8 +205,8 @@ async function refreshState(initial = false) {
           r.source,
           r.text,
           partial,
-          job?.fragment_done,
-          job?.fragment_total,
+          studioState.job?.fragment_done,
+          studioState.job?.fragment_total,
         ]
       : null,
   );
@@ -214,9 +220,9 @@ async function refreshState(initial = false) {
           "label",
           partial
             ? "ЧАСТИ " +
-                job.fragment_done +
+                studioState.job.fragment_done +
                 "/" +
-                job.fragment_total +
+                studioState.job.fragment_total +
                 " · ПРЕДВАРИТЕЛЬНЫЙ РЕЗУЛЬТАТ (КОНЕЦ ТЕКСТА)"
             : "ПЕРЕВОД",
         ),
@@ -230,7 +236,9 @@ async function refreshState(initial = false) {
     $("live").scrollTop = top;
     liveVersion = lv;
   }
-  const log = job ? await request("job-log?id=" + job.id) : { text: "" };
+  const log = studioState.job
+    ? await request("job-log?id=" + studioState.job.id)
+    : { text: "" };
   const panel = $("jobLog");
   if (panel.textContent !== log.text) {
     const follow =
@@ -240,27 +248,30 @@ async function refreshState(initial = false) {
     panel.scrollTop = follow ? panel.scrollHeight : top;
   }
   updateProjectScreen();
-  if (!dirty.size && file && !initial) await loadRows(true);
+  if (!studioState.dirty.size && studioState.file && !initial)
+    await loadRows(true);
 }
 function currentRecordPage() {
-  if (viewMode === "home") return null;
-  const specialized = studioLifecycle.page(viewMode);
+  if (studioState.viewMode === "home") return null;
+  const specialized = studioLifecycle.page(studioState.viewMode);
   if (specialized) return specialized;
-  if (!file) return null;
+  if (!studioState.file) return null;
   return {
-    path: `records?file=${file}&offset=${offset}&search=${encodeURIComponent($("search").value)}&status=${$("status").value}`,
+    path: `records?file=${studioState.file}&offset=${studioState.offset}&search=${encodeURIComponent($("search").value)}&status=${$("status").value}`,
     identity: JSON.stringify([
-      project,
-      viewMode,
-      file,
-      offset,
+      studioState.project,
+      studioState.viewMode,
+      studioState.file,
+      studioState.offset,
       $("search").value,
       $("status").value,
     ]),
   };
 }
 function editorIsActive() {
-  return dirty.size || document.activeElement.tagName === "TEXTAREA";
+  return (
+    studioState.dirty.size || document.activeElement.tagName === "TEXTAREA"
+  );
 }
 async function loadRows(quiet = false) {
   const page = currentRecordPage();
@@ -275,38 +286,41 @@ async function loadRows(quiet = false) {
   const scroll = container.scrollTop;
   renderRows(data, quiet);
   if (quiet) container.scrollTop = scroll;
-  const position = data.offset ?? offset;
+  const position = data.offset ?? studioState.offset;
   const size = data.page_size || 50;
   $("prev").disabled = !position;
   $("next").disabled = position + size >= data.total;
   document
     .querySelectorAll(".record")
     .forEach((card) =>
-      card.classList.toggle("current", +card.dataset.id === job?.current),
+      card.classList.toggle(
+        "current",
+        +card.dataset.id === studioState.job?.current,
+      ),
     );
 }
 function renderRecordCards(data, quiet = false) {
-  rows = data.rows;
-  total = data.total;
+  studioState.rows = data.rows;
+  studioState.total = data.total;
   setText(
     "pageInfo",
     typeof processPageInfo === "function"
       ? processPageInfo(data)
-      : total
-        ? `${offset + 1}–${Math.min(offset + 50, total)} из ${total}`
+      : studioState.total
+        ? `${studioState.offset + 1}–${Math.min(studioState.offset + 50, studioState.total)} из ${studioState.total}`
         : "Нет строк",
   );
-  $("prev").disabled = offset === 0;
-  $("next").disabled = offset + 50 >= total;
+  $("prev").disabled = studioState.offset === 0;
+  $("next").disabled = studioState.offset + 50 >= studioState.total;
   const destination = document.createDocumentFragment();
   const existing = new Map(
     [...$("rows").querySelectorAll(".record")].map((c) => [+c.dataset.id, c]),
   );
-  for (const r of rows) {
+  for (const r of studioState.rows) {
     let card = element(
       "article",
       undefined,
-      "record" + (job?.current === r.id ? " current" : ""),
+      "record" + (studioState.job?.current === r.id ? " current" : ""),
     );
     card.dataset.id = r.id;
     card.dataset.version = JSON.stringify([
@@ -329,7 +343,7 @@ function renderRecordCards(data, quiet = false) {
     let area = element("textarea");
     area.value = r.text;
     area.setAttribute("aria-label", "Перевод строки " + (r.position + 1));
-    area.oninput = () => dirty.add(r.id);
+    area.oninput = () => studioState.dirty.add(r.id);
     right.append(area);
     pair.append(right);
     let actions = element("div", undefined, "record-actions");
@@ -370,7 +384,7 @@ function renderRecordCards(data, quiet = false) {
         revision: r.revision,
         text: area.value,
       });
-      dirty.delete(r.id);
+      studioState.dirty.delete(r.id);
       await refresh();
       toast("Правка сохранена и защищена");
     });
@@ -381,15 +395,15 @@ function renderRecordCards(data, quiet = false) {
         text: area.value,
         verified: true,
       });
-      dirty.delete(r.id);
+      studioState.dirty.delete(r.id);
       await refresh();
       toast("Текущая версия проверена человеком");
     });
     button("Отменить правку", async () => {
-      if (dirty.has(r.id)) {
+      if (studioState.dirty.has(r.id)) {
         const latest = await request("current?id=" + r.id);
         area.value = latest.text;
-        dirty.delete(r.id);
+        studioState.dirty.delete(r.id);
         await loadRows();
         toast("Несохранённые изменения отменены");
       } else {
@@ -415,7 +429,7 @@ function renderRecordCards(data, quiet = false) {
       quiet && old?.dataset.version === card.dataset.version ? old : card,
     );
   }
-  if (!rows.length)
+  if (!studioState.rows.length)
     destination.append(
       quiet && $("rows").querySelector(".empty")
         ? $("rows").querySelector(".empty")
@@ -433,18 +447,19 @@ function renderRecordCards(data, quiet = false) {
   }
 }
 async function start(stage, retry = false) {
-  if (!project) throw Error("Сначала откройте проект");
-  if (dirty.size) throw Error("Сохраните ручные правки перед запуском");
-  lastStage = stage;
+  if (!studioState.project) throw Error("Сначала откройте проект");
+  if (studioState.dirty.size)
+    throw Error("Сохраните ручные правки перед запуском");
+  studioState.lastStage = stage;
   await request("job", {
-    project,
+    project: studioState.project,
     stage,
     provider:
       stage === "cloud" && $("provider").value === "local"
         ? "cloud"
         : $("provider").value,
     settings: settings(),
-    file: $("scope").value === "file" ? file : null,
+    file: $("scope").value === "file" ? studioState.file : null,
     retry,
   });
   await refresh();
@@ -454,13 +469,14 @@ $("newProject").onclick = () => {
   $("projectDialog").showModal();
 };
 $("openProject").onclick = guard(async () => {
+  studioLifecycle.notify("projectNavigation");
   let r = await request("project", {
     root: $("rootPath").value,
     scan: $("scan").checked,
   });
-  project = r.project.id;
-  file = 0;
-  offset = 0;
+  studioState.project = r.project.id;
+  studioState.file = 0;
+  studioState.offset = 0;
   $("projectDialog").close();
   await refresh(true);
   toast(
@@ -470,18 +486,19 @@ $("openProject").onclick = guard(async () => {
   );
 });
 $("projects").onchange = guard(async () => {
-  if (dirty.size) {
-    $("projects").value = project;
+  if (studioState.dirty.size) {
+    $("projects").value = studioState.project;
     toast("Сохраните правки перед сменой проекта");
     return;
   }
-  project = +$("projects").value;
-  file = 0;
-  offset = 0;
+  studioLifecycle.notify("projectNavigation");
+  studioState.project = +$("projects").value;
+  studioState.file = 0;
+  studioState.offset = 0;
   await refresh(true);
 });
 $("importButton").onclick = () => {
-  if (!project) return toast("Сначала откройте проект");
+  if (!studioState.project) return toast("Сначала откройте проект");
   $("importDialog").showModal();
 };
 $("doImport").onclick = guard(async () => {
@@ -489,7 +506,7 @@ $("doImport").onclick = guard(async () => {
   const uploaded = $("uploadFiles").files;
   if (uploaded.length) {
     let r = await request("upload", {
-      project,
+      project: studioState.project,
       files: await Promise.all(
         [...uploaded].map(async (f) => ({
           name: f.name,
@@ -505,7 +522,7 @@ $("doImport").onclick = guard(async () => {
     .map((x) => x.trim())
     .filter(Boolean);
   if (paths.length) {
-    let r = await request("import", { project, paths });
+    let r = await request("import", { project: studioState.project, paths });
     count += r.added;
     for (const e of r.errors) toast(e.message);
   }
@@ -519,11 +536,11 @@ for (let b of document.querySelectorAll("[data-close]"))
   b.onclick = () => b.closest("dialog").close();
 for (let b of document.querySelectorAll("[data-stage]"))
   b.onclick = guard(() => start(b.dataset.stage));
-$("retry").onclick = guard(() => start(lastStage, true));
+$("retry").onclick = guard(() => start(studioState.lastStage, true));
 for (let mode of ["pause", "resume", "cancel"])
   $(mode).onclick = guard(async () => {
     await request("control", {
-      id: job.id,
+      id: studioState.job.id,
       mode,
       settings: mode === "resume" ? settings() : undefined,
       limits: mode === "resume" ? readRunLimits() : undefined,
@@ -533,45 +550,47 @@ for (let mode of ["pause", "resume", "cancel"])
     await refresh();
   });
 $("saveSettings").onclick = guard(async () => {
-  if (!project) throw Error("Сначала откройте проект");
+  if (!studioState.project) throw Error("Сначала откройте проект");
   await request("settings", {
-    project,
+    project: studioState.project,
     settings: settings(),
     key: $("apiKey").value,
   });
   $("apiKey").value = "";
   toast("Настройки сохранены");
 });
-$("prev").onclick = guard(async () => {
-  if (dirty.size) throw Error("Сохраните правки");
-  offset = Math.max(0, offset - 50);
-  await loadRows();
-});
-$("next").onclick = guard(async () => {
-  if (dirty.size) throw Error("Сохраните правки");
-  offset += 50;
-  await loadRows();
-});
+for (const [id, direction] of [
+  ["prev", -1],
+  ["next", 1],
+]) {
+  $(id).onclick = guard(async () => {
+    if (studioState.dirty.size) throw Error("Сохраните правки");
+    const page = studioLifecycle.page(studioState.viewMode);
+    if (page?.move) page.move(direction);
+    else studioState.offset = Math.max(0, studioState.offset + direction * 50);
+    await loadRows();
+  });
+}
 let searchTimer;
 $("search").oninput = () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(
     guard(async () => {
-      if (dirty.size) return;
-      offset = 0;
+      if (studioState.dirty.size) return;
+      studioState.offset = 0;
       await loadRows();
     }),
     350,
   );
 };
 $("status").onchange = guard(async () => {
-  if (dirty.size) throw Error("Сохраните правки");
-  offset = 0;
+  if (studioState.dirty.size) throw Error("Сохраните правки");
+  studioState.offset = 0;
   await loadRows();
 });
 $("exportButton").onclick = () => {
-  if (!file) return;
-  const p = snapshot.files.find((f) => f.id === file);
+  if (!studioState.file) return;
+  const p = studioState.snapshot.files.find((f) => f.id === studioState.file);
   $("exportPath").value =
     p.path +
     ".studio-export." +
@@ -581,51 +600,13 @@ $("exportButton").onclick = () => {
   $("exportDialog").showModal();
 };
 $("doExport").onclick = guard(async () => {
-  if (dirty.size) throw Error("Сохраните правки перед экспортом");
-  let r = await request("export", { file, destination: $("exportPath").value });
+  if (studioState.dirty.size) throw Error("Сохраните правки перед экспортом");
+  let r = await request("export", {
+    file: studioState.file,
+    destination: $("exportPath").value,
+  });
   $("exportDialog").close();
   toast("Сохранено: " + r.path);
-});
-$("errorsButton").onclick = guard(async () => {
-  let errors = await request("errors?project=" + project);
-  $("infoTitle").textContent = "Ошибки · последние 100";
-  $("infoContent").replaceChildren(
-    ...errors.map((e) => {
-      let d = element("div", undefined, "error");
-      d.append(
-        element(
-          "div",
-          e.at +
-            " · задача " +
-            (e.job || "импорт") +
-            " · строка " +
-            (e.record || "—"),
-        ),
-        element("div", e.source || ""),
-        element("p", e.message),
-      );
-      if (e.record) {
-        let b = element("button", "Открыть строку");
-        b.onclick = guard(async () => {
-          if (dirty.size) throw Error("Сохраните правки");
-          showView("text");
-          let r = await request("current?id=" + e.record);
-          file = r.file;
-          offset = Math.floor(r.position / 50) * 50;
-          $("search").value = "";
-          $("status").value = "";
-          $("infoDialog").close();
-          await refresh();
-          await loadRows();
-        });
-        d.append(b);
-      }
-      return d;
-    }),
-  );
-  if (!errors.length)
-    $("infoContent").append(element("p", "Открытых ошибок нет"));
-  $("infoDialog").showModal();
 });
 $("mcpButton").onclick = async () => {
   $("infoTitle").textContent = "MCP · внешняя ИИ";
@@ -639,10 +620,11 @@ $("mcpButton").onclick = async () => {
       "MCP не предоставляет модель или подписку: внешняя ИИ подключается отдельно. Для облачного API используйте настройки справа.",
     ),
   );
+  studioLifecycle.notify("mcpInfo");
   $("infoDialog").showModal();
 };
 window.addEventListener("beforeunload", (e) => {
-  if (dirty.size) {
+  if (studioState.dirty.size) {
     e.preventDefault();
     e.returnValue = "";
   }
@@ -659,25 +641,25 @@ window.addEventListener(
       applyModelList(m.model_details || m.models.map((name) => ({ name })));
     setInterval(async () => {
       if (
-        busy ||
+        studioState.busy ||
         document.querySelector("dialog[open]") ||
         document.activeElement.tagName === "TEXTAREA"
       )
         return;
-      busy = true;
+      studioState.busy = true;
       try {
         await refresh();
       } catch (e) {
         $("connection").textContent =
           "Сервер недоступен; перезапустите приложение";
       } finally {
-        busy = false;
+        studioState.busy = false;
       }
     }, 2500);
   }),
 );
 async function refresh(initial = false) {
-  const previousProject = project;
+  const previousProject = studioState.project;
   await refreshState(initial);
   await studioLifecycle.refresh({ initial, previousProject });
 }

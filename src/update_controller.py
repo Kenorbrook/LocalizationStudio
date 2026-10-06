@@ -164,7 +164,9 @@ class UpdateController:
 
     def _dirty(self):
         return bool(
-            self.closer.window.evaluate_js('typeof dirty!=="undefined" && dirty.size>0')
+            self.closer.window.evaluate_js(
+                'typeof studioState!=="undefined" && studioState.dirty.size>0'
+            )
         )
 
     def install(self):

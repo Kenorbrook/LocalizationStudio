@@ -220,7 +220,7 @@ class CloseController:
                     )
                 elif choice == "exit":
                     if self.window.evaluate_js(
-                        'typeof dirty!=="undefined" && dirty.size>0'
+                        'typeof studioState!=="undefined" && studioState.dirty.size>0'
                     ):
                         raise ValueError(
                             "Есть несохранённые правки. Сохраните или отмените их перед полным закрытием."

@@ -1,10 +1,4 @@
 // Translation process: bounded future rows, retained history, and project folders.
-window.processTab = "queue";
-window.markKind = "bad";
-let processOffset = 0,
-  marksOffset = 0,
-  processPrefs = { max_phrases: 200, max_seconds: 600, page_size: 50 },
-  processPrefsProject = 0;
 const processControls = element("div");
 processControls.id = "processControls";
 processControls.hidden = true;
@@ -53,43 +47,41 @@ badFolder.id = "badFolder";
 reviewFolder.id = "reviewFolder";
 projectTools.append(badFolder, reviewFolder);
 function updateProcessControls() {
-  processControls.hidden = viewMode !== "queue";
-  futureTab.classList.toggle("primary", window.processTab === "queue");
-  historyTab.classList.toggle("primary", window.processTab === "history");
+  processControls.hidden = studioState.viewMode !== "queue";
+  futureTab.classList.toggle("primary", studioState.processTab === "queue");
+  historyTab.classList.toggle("primary", studioState.processTab === "history");
   textPane
     .querySelectorAll(".pagination button")
     .forEach(
       (button) =>
-        (button.hidden = viewMode === "queue" && window.processTab === "queue"),
+        (button.hidden =
+          studioState.viewMode === "queue" &&
+          studioState.processTab === "queue"),
     );
-  setText(badFolder, "▣ Брак · " + (snapshot?.flags?.bad || 0));
+  setText(badFolder, "▣ Брак · " + (studioState.snapshot?.flags?.bad || 0));
   setText(
     reviewFolder,
-    "▣ Ручная проверка · " + (snapshot?.flags?.review || 0),
+    "▣ Ручная проверка · " + (studioState.snapshot?.flags?.review || 0),
   );
 }
-const processShowView = showView;
-showView = function (mode) {
-  processShowView(mode);
-  updateProcessControls();
-};
+studioLifecycle.register("navigate", "processControls", updateProcessControls);
 function processPageInfo(data) {
-  if (viewMode === "queue" && window.processTab === "queue")
+  if (studioState.viewMode === "queue" && studioState.processTab === "queue")
     return `В очереди: ${data.total} · показаны следующие ${data.rows.length} записей`;
   const start = data.offset || 0;
   return data.total
-    ? `${start + 1}–${Math.min(start + data.rows.length, data.total)} из ${data.total}${viewMode === "queue" ? " · история процесса" : ""}`
-    : viewMode === "queue"
+    ? `${start + 1}–${Math.min(start + data.rows.length, data.total)} из ${data.total}${studioState.viewMode === "queue" ? " · история процесса" : ""}`
+    : studioState.viewMode === "queue"
       ? "История пуста или скрыта установленными ограничениями"
-      : viewMode === "flags"
+      : studioState.viewMode === "flags"
         ? "В этой папке нет помеченных строк"
         : "Нет строк";
 }
 async function switchProcess(tab) {
-  if (dirty.size)
+  if (studioState.dirty.size)
     throw Error("Сохраните или отмените правки перед сменой вкладки");
-  window.processTab = tab;
-  processOffset = 0;
+  studioState.processTab = tab;
+  studioState.processOffset = 0;
   showView("queue");
   await loadRows();
 }
@@ -100,70 +92,64 @@ for (const [button, kind] of [
   [reviewFolder, "review"],
 ])
   button.onclick = guard(async () => {
-    if (dirty.size) throw Error("Сохраните или отмените правки");
-    window.markKind = kind;
-    marksOffset = 0;
+    if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
+    studioState.markKind = kind;
+    studioState.marksOffset = 0;
     showView("flags");
     await loadRows();
   });
 saveHistorySettings.onclick = guard(async () => {
-  processPrefs = await request("process-settings", {
-    project,
+  studioState.processPrefs = await request("process-settings", {
+    project: studioState.project,
     preferences: {
       max_phrases: +$("historyMaxPhrases").value,
       max_seconds: +$("historyMaxSeconds").value,
       page_size: +$("processPageSize").value,
     },
   });
-  processOffset = 0;
-  if (!dirty.size) await loadRows();
+  studioState.processOffset = 0;
+  if (!studioState.dirty.size) await loadRows();
   toast("Настройки процесса сохранены для проекта");
 });
 for (const mode of ["queue", "flags", "preserved"]) {
   studioLifecycle.registerPage(mode, () => {
     const identity = JSON.stringify([
-      project,
+      studioState.project,
       mode,
-      window.processTab,
-      window.markKind,
-      processOffset,
-      marksOffset,
+      studioState.processTab,
+      studioState.markKind,
+      studioState.processOffset,
+      studioState.marksOffset,
     ]);
     const paths = {
-      preserved: () => `preserved?project=${project}&offset=${marksOffset}`,
+      preserved: () =>
+        `preserved?project=${studioState.project}&offset=${studioState.marksOffset}`,
       flags: () =>
-        `marked?project=${project}&kind=${window.markKind}&offset=${marksOffset}`,
+        `marked?project=${studioState.project}&kind=${studioState.markKind}&offset=${studioState.marksOffset}`,
       queue: () =>
-        window.processTab === "history"
-          ? `process-history?project=${project}&offset=${processOffset}`
-          : `queue?project=${project}`,
+        studioState.processTab === "history"
+          ? `process-history?project=${studioState.project}&offset=${studioState.processOffset}`
+          : `queue?project=${studioState.project}`,
     };
-    return { identity, path: paths[mode]() };
+    return {
+      identity,
+      path: paths[mode](),
+      move(direction) {
+        if (mode === "flags" || mode === "preserved")
+          studioState.marksOffset = Math.max(
+            0,
+            studioState.marksOffset + direction * 50,
+          );
+        else if (studioState.processTab === "history")
+          studioState.processOffset = Math.max(
+            0,
+            studioState.processOffset +
+              direction * studioState.processPrefs.page_size,
+          );
+      },
+    };
   });
 }
-const oldPrev = $("prev").onclick,
-  oldNext = $("next").onclick;
-for (const [id, direction, old] of [
-  ["prev", -1, oldPrev],
-  ["next", 1, oldNext],
-])
-  $(id).onclick = guard(async () => {
-    if (
-      viewMode !== "flags" &&
-      viewMode !== "preserved" &&
-      !(viewMode === "queue" && window.processTab === "history")
-    )
-      return old();
-    if (dirty.size) throw Error("Сохраните или отмените правки");
-    if (viewMode === "flags" || viewMode === "preserved")
-      marksOffset = Math.max(0, marksOffset + direction * 50);
-    else
-      processOffset = Math.max(
-        0,
-        processOffset + direction * processPrefs.page_size,
-      );
-    await loadRows();
-  });
 studioLifecycle.register("render", "processRender", (data, quiet = false) => {
   const byId = new Map(data.rows.map((row) => [row.id, row]));
   for (const card of $("rows").querySelectorAll(".record")) {
@@ -172,7 +158,7 @@ studioLifecycle.register("render", "processRender", (data, quiet = false) => {
     card.dataset.markControls = "1";
     const actions = card.querySelector(".record-actions"),
       top = card.querySelector(".record-top");
-    if (viewMode !== "text" && row.path) {
+    if (studioState.viewMode !== "text" && row.path) {
       const filename = element("span", row.path.split(/[\\/]/).pop(), "sub");
       filename.title = row.path;
       top.insertBefore(filename, top.lastChild);
@@ -214,7 +200,7 @@ studioLifecycle.register("render", "processRender", (data, quiet = false) => {
             ? "Отложить строку для ручной проверки; пометка сохраняется после редактуры"
             : "Убрать пометку; существующая ручная правка останется защищённой";
       button.onclick = guard(async () => {
-        if (dirty.has(row.id))
+        if (studioState.dirty.has(row.id))
           throw Error("Сохраните или отмените правку перед пометкой");
         await request("mark", { id: row.id, revision: row.revision, kind });
         await refresh();
@@ -230,13 +216,16 @@ studioLifecycle.register(
   "processRefresh",
   async ({ initial, previousProject: oldProject }) => {
     updateProcessControls();
-    if (project && processPrefsProject !== project) {
-      const pid = project,
+    if (
+      studioState.project &&
+      studioState.processPrefsProject !== studioState.project
+    ) {
+      const pid = studioState.project,
         pref = await request("process-settings?project=" + pid);
-      if (pid !== project) return;
-      processPrefs = pref;
-      processPrefsProject = pid;
-      processOffset = marksOffset = 0;
+      if (pid !== studioState.project) return;
+      studioState.processPrefs = pref;
+      studioState.processPrefsProject = pid;
+      studioState.processOffset = studioState.marksOffset = 0;
       $("historyMaxPhrases").value = pref.max_phrases;
       $("historyMaxSeconds").value = pref.max_seconds;
       $("processPageSize").value = pref.page_size;
@@ -287,14 +276,14 @@ folderControls.append(
 folderControls.lastChild.append(folderRun, folderClear);
 let folderIdentity = "";
 function updateFolderControls() {
-  const visible = viewMode === "flags";
+  const visible = studioState.viewMode === "flags";
   folderControls.hidden = !visible;
   $("scope").hidden = visible;
   if (visible) {
     if (settingsMenu.parentNode !== folderControls)
       folderControls.insertBefore(settingsMenu, folderReviewHint);
     settingsMenu.open = true;
-    const identity = project + ":" + window.markKind;
+    const identity = studioState.project + ":" + studioState.markKind;
     if (identity !== folderIdentity) {
       folderInstruction.value =
         localStorage.getItem("review-instruction:" + identity) ||
@@ -304,7 +293,7 @@ function updateFolderControls() {
     }
     setText(
       folderClear,
-      window.markKind === "bad"
+      studioState.markKind === "bad"
         ? "Снять «Брак» со всех строк проекта"
         : "Снять «Ручная проверка» со всех строк проекта",
     );
@@ -318,35 +307,31 @@ folderInstruction.oninput = () =>
     folderInstruction.value,
   );
 folderRun.onclick = guard(async () => {
-  if (dirty.size) throw Error("Сохраните или отмените правки");
+  if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
   newRunLimits.read();
   await request("job", {
-    project,
+    project: studioState.project,
     stage: "review",
     provider: $("provider").value,
     settings: { ...settings(), review_instruction: folderInstruction.value },
-    mark_kind: window.markKind,
+    mark_kind: studioState.markKind,
     allow_manual: folderManual.checked,
   });
   await refresh();
   toast("Редактура папки запущена; пометки останутся");
 });
 folderClear.onclick = guard(async () => {
-  if (dirty.size) throw Error("Сохраните или отмените правки");
+  if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
   const result = await request("clear-marks", {
-    project,
-    kind: window.markKind,
+    project: studioState.project,
+    kind: studioState.markKind,
   });
-  marksOffset = 0;
+  studioState.marksOffset = 0;
   await refresh();
   await loadRows();
   toast("Снято пометок: " + result.cleared);
 });
-const folderShowView = showView;
-showView = function (mode) {
-  folderShowView(mode);
-  updateFolderControls();
-};
+studioLifecycle.register("navigate", "folderControls", updateFolderControls);
 studioLifecycle.register(
   "refresh",
   "folderRefresh",
@@ -359,8 +344,8 @@ const preservedFolder = element("button", "▣ Сохранено без пер�
 preservedFolder.id = "preservedFolder";
 projectTools.append(preservedFolder);
 preservedFolder.onclick = guard(async () => {
-  if (dirty.size) throw Error("Сохраните или отмените правки");
-  marksOffset = 0;
+  if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
+  studioState.marksOffset = 0;
   showView("preserved");
   await loadRows();
 });
@@ -370,7 +355,8 @@ studioLifecycle.register(
   async ({ initial, previousProject: oldProject }) => {
     setText(
       preservedFolder,
-      "▣ Сохранено без перевода · " + (snapshot?.counts?.preserved || 0),
+      "▣ Сохранено без перевода · " +
+        (studioState.snapshot?.counts?.preserved || 0),
     );
   },
 );
@@ -415,7 +401,8 @@ studioLifecycle.register("render", "literalRender", (data, quiet = false) => {
       reason.style.width = "100%";
       const preserve = element("button", "Другой язык / авторский приём");
       preserve.onclick = guard(async () => {
-        if (dirty.has(row.id)) throw Error("Сохраните или отмените правку");
+        if (studioState.dirty.has(row.id))
+          throw Error("Сохраните или отмените правку");
         if (!reason.value.trim())
           throw Error("Укажите причину сохранения оригинала");
         await request("preserve", {
@@ -443,8 +430,8 @@ function modalError(e, where) {
 $("errorsButton").onclick = async () => {
   try {
     const [errors, retryPlan] = await Promise.all([
-        request("errors?project=" + project),
-        request("error-retry-plan", { project }),
+        request("errors?project=" + studioState.project),
+        request("error-retry-plan", { project: studioState.project }),
       ]),
       content = $("infoContent");
     $("infoTitle").textContent = "Ошибки этого проекта";
@@ -522,7 +509,8 @@ async function showErrorRetry(error) {
     b.dataset.retryChoice = mode;
     b.onclick = async () => {
       try {
-        if (dirty.size) throw Error("Сохраните или отмените правки");
+        if (studioState.dirty.size)
+          throw Error("Сохраните или отмените правки");
         if (mode === "manual") {
           const row = await request("current?id=" + error.record);
           return showPreservedManual(row, "manual-error");
@@ -530,7 +518,7 @@ async function showErrorRetry(error) {
         if (mode === "custom") return showErrorParameters(error);
         b.disabled = true;
         const result = await request("enqueue-error-retry", {
-          project,
+          project: studioState.project,
           record: error.record,
           stage: error.stage,
           mode: "original",
@@ -665,7 +653,7 @@ function showErrorParameters(error) {
       const b = await request(
         error.bulk ? "error-retry-budget" : "error-budget",
         {
-          project,
+          project: studioState.project,
           record: error.record,
           stage: error.stage,
           settings: input.settings,
@@ -692,11 +680,11 @@ function showErrorParameters(error) {
   send.id = "enqueueCustomRetry";
   send.onclick = async () => {
     try {
-      if (dirty.size) throw Error("Сохраните или отмените правки");
+      if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
       const input = read();
       send.disabled = true;
       const result = await request("enqueue-error-retry", {
-        project,
+        project: studioState.project,
         record: error.record,
         stage: error.stage,
         mode: "custom",
@@ -736,7 +724,7 @@ function showErrorParameters(error) {
 }
 
 async function showPreservedTranslation(row) {
-  if (dirty.size) throw Error("Сохраните или отмените правки");
+  if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
   const dialog = $("infoDialog"),
     content = $("infoContent");
   $("infoTitle").textContent = "Перевести фразу";
@@ -759,7 +747,7 @@ async function showPreservedTranslation(row) {
     button.onclick = guard(async () => {
       if (mode === "manual") return showPreservedManual(row);
       const result = await request("translate-preserved", {
-        project,
+        project: studioState.project,
         id: row.id,
         revision: row.revision,
         mode,
@@ -815,12 +803,12 @@ async function showPreservedManual(row, saveAction = "translate-preserved") {
   const save = element("button", "Сохранить перевод");
   save.id = "preservedManualSave";
   $("infoFooter").prepend(save);
-  area.oninput = () => dirty.add(row.id);
+  area.oninput = () => studioState.dirty.add(row.id);
   const message = element("p");
   message.setAttribute("role", "status");
   card.append(message);
   const cleanup = () => {
-    dirty.delete(row.id);
+    studioState.dirty.delete(row.id);
     save.remove();
   };
   $("infoDialog").addEventListener("close", cleanup, { once: true });
@@ -828,7 +816,7 @@ async function showPreservedManual(row, saveAction = "translate-preserved") {
     try {
       save.disabled = true;
       await request(saveAction, {
-        project,
+        project: studioState.project,
         id: row.id,
         revision: row.revision,
         mode: "manual",
@@ -958,13 +946,13 @@ chainPanel.id = "jobChain";
 projectTools.before(chainPanel);
 let chainVersion = "";
 studioLifecycle.register("refresh", "chainRefresh", async (context) => {
-  const jobs = (snapshot?.jobs || [])
+  const jobs = (studioState.snapshot?.jobs || [])
     .filter((j) =>
       ["running", "queued", "paused", "waiting", "held"].includes(j.state),
     )
     .sort((a, b) => a.id - b.id);
   const signature = JSON.stringify([
-    project,
+    studioState.project,
     jobs.map((j) => [j.id, j.state, j.done, j.total, j.settings]),
   ]);
   if (signature === chainVersion) return;

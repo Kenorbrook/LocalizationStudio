@@ -178,26 +178,29 @@ studioLifecycle.register(
   "refresh",
   "workflowRefresh",
   async ({ initial, previousProject: oldProject }) => {
-    knownConnections = window.connectionSnapshot || [];
+    knownConnections = studioState.connectionSnapshot || [];
     updateExecutionChoices();
-    if (initial || limitsProject !== project) {
+    if (initial || limitsProject !== studioState.project) {
       const s = JSON.parse(
-        snapshot.projects.find((p) => p.id === project)?.settings || "{}",
+        studioState.snapshot.projects.find((p) => p.id === studioState.project)
+          ?.settings || "{}",
       );
       newRunLimits.load(s);
-      limitsProject = project;
+      limitsProject = studioState.project;
     }
-    if (initial || limitsJob !== job?.id) {
-      continuationLimits.load(JSON.parse(job?.settings || "{}"));
-      limitsJob = job?.id;
+    if (initial || limitsJob !== studioState.job?.id) {
+      continuationLimits.load(JSON.parse(studioState.job?.settings || "{}"));
+      limitsJob = studioState.job?.id;
     }
-    limitMenu.hidden = !["paused", "held"].includes(job?.state);
-    const progress = describeRunProgress(job);
+    limitMenu.hidden = !["paused", "held"].includes(studioState.job?.state);
+    const progress = describeRunProgress(studioState.job);
     setText(runLimitText, progress.text);
     runLimitProgress.hidden =
-      !job || progress.fraction === null || !job.run_started;
+      !studioState.job ||
+      progress.fraction === null ||
+      !studioState.job.run_started;
     runLimitProgress.value = Math.min(1, Math.max(0, progress.fraction || 0));
-    runLimitText.hidden = !job;
+    runLimitText.hidden = !studioState.job;
   },
 );
 // Only the body scrolls; title and close controls stay visible in every info dialog.

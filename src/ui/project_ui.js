@@ -1,5 +1,4 @@
 // Project navigation and connection state; preserve editors during live polling.
-let viewMode = "home";
 const style = element("style");
 style.textContent = `[hidden]{display:none!important}.project-actions{display:flex;gap:16px;margin:26px 0}.project-actions button{padding:26px;flex:1;text-align:left;font-size:18px}.project-actions small{display:block;font-size:12px;color:var(--muted);margin-top:9px}.spinner{display:inline-block;width:13px;height:13px;border:2px solid #33594b;border-top-color:var(--accent);border-radius:50%;animation:spin 1s linear infinite;margin-right:8px;vertical-align:middle}@keyframes spin{to{transform:rotate(360deg)}}#projectActivity{margin:15px 0;min-height:22px}#projectSummary{line-height:1.9}#projectBack{margin-bottom:18px}#mcpStatus{white-space:pre-line}`;
 document.head.append(style);
@@ -46,13 +45,11 @@ projectPulse.id = "projectPulse";
 $("projects").after(projectPulse);
 let activityVersion = "",
   pulseVersion = "";
-const oldMcp = $("mcpButton").onclick;
-$("mcpButton").onclick = async () => {
-  await oldMcp();
+studioLifecycle.register("mcpInfo", "connectionStatus", () => {
   $("infoContent").prepend(element("p", mcpStatus.textContent));
-};
+});
 function showView(mode) {
-  viewMode = mode;
+  studioState.viewMode = mode;
   home.hidden = mode !== "home";
   textPane.hidden = mode === "home";
   back.hidden = mode === "home";
@@ -64,14 +61,22 @@ function showView(mode) {
     .querySelector(".pagination")
     .querySelectorAll("button")
     .forEach(
-      (b) => (b.hidden = mode === "queue" && window.processTab !== "history"),
+      (b) =>
+        (b.hidden = mode === "queue" && studioState.processTab !== "history"),
     );
-  if (snapshot) updateProjectScreen();
+  if (studioState.snapshot) updateProjectScreen();
+  studioLifecycle.notify("navigate", { mode });
 }
 function updateProjectScreen() {
-  const p = snapshot.projects.find((p) => p.id == project);
+  const p = studioState.snapshot.projects.find(
+    (p) => p.id == studioState.project,
+  );
   const active = !!p?.active;
-  const av = JSON.stringify([project, active, job?.state]);
+  const av = JSON.stringify([
+    studioState.project,
+    active,
+    studioState.job?.state,
+  ]);
   if (av !== activityVersion) {
     activity.replaceChildren();
     if (active) activity.append(element("span", undefined, "spinner"));
@@ -80,14 +85,16 @@ function updateProjectScreen() {
         "span",
         active
           ? "Перевод или проверка выполняется"
-          : ["paused", "held"].includes(job?.state)
+          : ["paused", "held"].includes(studioState.job?.state)
             ? "Задача на паузе"
             : "Нет работающих задач",
       ),
     );
     activityVersion = av;
   }
-  const names = snapshot.projects.filter((p) => p.active).map((p) => p.name);
+  const names = studioState.snapshot.projects
+    .filter((p) => p.active)
+    .map((p) => p.name);
   const pv = JSON.stringify(names);
   if (pv !== pulseVersion) {
     projectPulse.replaceChildren();
@@ -98,16 +105,19 @@ function updateProjectScreen() {
       );
     pulseVersion = pv;
   }
-  const counts = snapshot.counts;
+  const counts = studioState.snapshot.counts;
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
   const translated =
     (counts.translated || 0) + (counts.edited || 0) + (counts.verified || 0);
   setText(
     summary,
-    `Всего строк: ${total} · Есть перевод: ${translated} · Без перевода: ${counts.empty || 0}\nСохранено без перевода: ${counts.preserved || 0} · В очереди: ${snapshot.pending || 0} · Сейчас обрабатывается: ${job?.state === "running" && job.current ? 1 : 0} · Ошибок проекта: ${snapshot.errors || 0}`,
+    `Всего строк: ${total} · Есть перевод: ${translated} · Без перевода: ${counts.empty || 0}\nСохранено без перевода: ${counts.preserved || 0} · В очереди: ${studioState.snapshot.pending || 0} · Сейчас обрабатывается: ${studioState.job?.state === "running" && studioState.job.current ? 1 : 0} · Ошибок проекта: ${studioState.snapshot.errors || 0}`,
   );
-  setText("errorsButton", "Ошибки этого проекта · " + (snapshot.errors || 0));
-  if (viewMode === "home") {
+  setText(
+    "errorsButton",
+    "Ошибки этого проекта · " + (studioState.snapshot.errors || 0),
+  );
+  if (studioState.viewMode === "home") {
     setText("fileTitle", p?.name || "Откройте проект");
     setText(
       "description",
@@ -115,20 +125,20 @@ function updateProjectScreen() {
     );
     setText("breadcrumb", "ПРОЕКТ");
   }
-  if (viewMode === "queue") {
+  if (studioState.viewMode === "queue") {
     setText("fileTitle", "Процесс перевода");
     setText(
       "description",
-      window.processTab === "history"
+      studioState.processTab === "history"
         ? "Недавние переведённые фразы. Ограничения влияют только на показ в этом окне."
         : "Следующие записи очереди. Готовые фразы доступны во вкладке «История».",
     );
     setText("breadcrumb", (p?.name || "") + " / ПРОЦЕСС");
   }
-  if (viewMode === "flags") {
+  if (studioState.viewMode === "flags") {
     setText(
       "fileTitle",
-      window.markKind === "bad" ? "Брак" : "Ручная проверка",
+      studioState.markKind === "bad" ? "Брак" : "Ручная проверка",
     );
     setText(
       "description",
@@ -136,7 +146,7 @@ function updateProjectScreen() {
     );
     setText("breadcrumb", (p?.name || "") + " / ПОМЕТКИ");
   }
-  if (viewMode === "preserved") {
+  if (studioState.viewMode === "preserved") {
     setText("fileTitle", "Сохранено без перевода");
     setText(
       "description",
@@ -144,8 +154,8 @@ function updateProjectScreen() {
     );
     setText("breadcrumb", (p?.name || "") + " / ОРИГИНАЛ");
   }
-  if (viewMode === "text") {
-    const f = snapshot.files.find((f) => f.id === file);
+  if (studioState.viewMode === "text") {
+    const f = studioState.snapshot.files.find((f) => f.id === studioState.file);
     if (f) {
       setText("fileTitle", f.path.split(/[\\/]/).pop());
       setText(
@@ -168,20 +178,14 @@ queue.onclick = guard(async () => {
   await loadRows();
 });
 back.onclick = guard(async () => {
-  if (dirty.size) throw Error("Сохраните или отмените правки перед выходом");
+  if (studioState.dirty.size)
+    throw Error("Сохраните или отмените правки перед выходом");
   showView("home");
 });
 $("files").addEventListener("click", () => showView("text"), true);
-const oldProjectChange = $("projects").onchange;
-$("projects").onchange = async (...args) => {
-  if (!dirty.size) showView("home");
-  await oldProjectChange(...args);
-};
-const oldOpen = $("openProject").onclick;
-$("openProject").onclick = async (...args) => {
-  showView("home");
-  await oldOpen(...args);
-};
+studioLifecycle.register("projectNavigation", "projectHome", () =>
+  showView("home"),
+);
 let connectionVersion = "";
 studioLifecycle.register(
   "refresh",
@@ -190,7 +194,7 @@ studioLifecycle.register(
     updateProjectScreen();
     const connections = await request("connections");
     const version = JSON.stringify(connections);
-    window.connectionSnapshot = connections.mcp;
+    studioState.connectionSnapshot = connections.mcp;
     if (version !== connectionVersion) {
       const message = connections.mcp.length
         ? connections.mcp
@@ -259,7 +263,9 @@ function profileCard(id = "", profile = {}) {
 }
 characters.onclick = guard(async () => {
   await refresh();
-  const p = snapshot.projects.find((p) => p.id == project);
+  const p = studioState.snapshot.projects.find(
+    (p) => p.id == studioState.project,
+  );
   const profiles = JSON.parse(p.settings || "{}").speaker_profiles || {};
   profileList.replaceChildren();
   Object.entries(profiles).forEach(([id, p]) => profileCard(id, p));
@@ -280,7 +286,7 @@ saveProfiles.onclick = guard(async () => {
     if (profiles[id]) throw Error("Идентификатор повторяется: " + id);
     profiles[id] = values;
   }
-  await request("speaker-profiles", { project, profiles });
+  await request("speaker-profiles", { project: studioState.project, profiles });
   profileDialog.close();
   await refresh();
   toast("Правила персонажей сохранены для этого проекта");
@@ -335,55 +341,59 @@ setText(right.querySelector('[data-stage="review"]'), "Литературная 
 setText(right.querySelector('[data-stage="cloud"]'), "Облачная проверка");
 mainAction.onclick = guard(async () => {
   if (
-    job?.state === "held" ||
-    (job?.state === "paused" && JSON.parse(job.settings || "{}")._retry_origin)
+    studioState.job?.state === "held" ||
+    (studioState.job?.state === "paused" &&
+      JSON.parse(studioState.job.settings || "{}")._retry_origin)
   ) {
     await request("control", {
-      id: job.id,
+      id: studioState.job.id,
       mode: "resume",
       limits: readRunLimits(),
       preserve_project_settings: true,
     });
     await refresh();
-  } else if (job?.state === "paused") await $("resume").onclick();
-  else if (job?.state === "running") await $("pause").onclick();
-  else if (job?.state !== "queued") await start("translate");
+  } else if (studioState.job?.state === "paused") await $("resume").onclick();
+  else if (studioState.job?.state === "running") await $("pause").onclick();
+  else if (studioState.job?.state !== "queued") await start("translate");
 });
 function updateTaskActions() {
   const active =
-    !!job && ["running", "queued", "paused", "held"].includes(job.state);
+    !!studioState.job &&
+    ["running", "queued", "paused", "held"].includes(studioState.job.state);
   const stageName =
     { translate: "перевод", review: "редактуру", cloud: "облачную проверку" }[
-      job?.stage
+      studioState.job?.stage
     ] || "задачу";
-  const primary = ["paused", "held"].includes(job?.state)
+  const primary = ["paused", "held"].includes(studioState.job?.state)
     ? "Продолжить " + stageName
-    : job?.state === "running"
+    : studioState.job?.state === "running"
       ? "Приостановить " + stageName
-      : job?.state === "queued"
+      : studioState.job?.state === "queued"
         ? "Запуск задачи…"
         : "Перевести оставшееся";
   setText(mainAction, primary);
   mainAction.disabled =
-    job?.state === "queued" || (!active && !(snapshot?.counts.empty || 0));
+    studioState.job?.state === "queued" ||
+    (!active && !(studioState.snapshot?.counts.empty || 0));
   setText(
     actionHint,
-    ["paused", "held"].includes(job?.state)
-      ? JSON.parse(job.settings || "{}")._retry_origin || job.state === "held"
+    ["paused", "held"].includes(studioState.job?.state)
+      ? JSON.parse(studioState.job.settings || "{}")._retry_origin ||
+        studioState.job.state === "held"
         ? "Продолжит эту очередь с её сохранённой моделью и параметрами."
         : "Начнёт новый отсчёт по параметрам следующего продолжения. Число соседних фраз берётся из настроек ниже."
-      : job?.state === "running"
+      : studioState.job?.state === "running"
         ? "Приостановит задачу после текущего запроса."
-        : job?.state === "queued"
+        : studioState.job?.state === "queued"
           ? "Обработчик запускается."
-          : !(snapshot?.counts.empty || 0)
+          : !(studioState.snapshot?.counts.empty || 0)
             ? "В проекте нет строк без перевода."
             : "Создаст новую задачу для строк без перевода.",
   );
   const currentSettings = active
-    ? JSON.parse(job.settings || "{}")
+    ? JSON.parse(studioState.job.settings || "{}")
     : settings();
-  const provider = active ? job.provider : $("provider").value;
+  const provider = active ? studioState.job.provider : $("provider").value;
   const model =
     provider === "cloud" ? currentSettings.cloud_model : currentSettings.model;
   setText(
@@ -401,13 +411,16 @@ function updateTaskActions() {
       " после",
   );
   $("cancel").hidden = !active;
-  $("retry").disabled = active || !(snapshot?.errors || 0);
+  $("retry").disabled = active || !(studioState.snapshot?.errors || 0);
   const review = right.querySelector('[data-stage="review"]');
   const cloud = right.querySelector('[data-stage="cloud"]');
-  review.disabled = active || !(snapshot?.counts.translated || 0);
+  review.disabled = active || !(studioState.snapshot?.counts.translated || 0);
   cloud.disabled =
     active ||
-    !((snapshot?.counts.translated || 0) + (snapshot?.counts.edited || 0));
+    !(
+      (studioState.snapshot?.counts.translated || 0) +
+      (studioState.snapshot?.counts.edited || 0)
+    );
   setText(
     reviewHint,
     active
@@ -424,7 +437,7 @@ studioLifecycle.register(
 );
 settingsMenu.addEventListener("input", updateTaskActions);
 settingsMenu.addEventListener("change", updateTaskActions);
-if (snapshot) updateTaskActions();
+if (studioState.snapshot) updateTaskActions();
 
 // Ollama metadata is local. Parameter count is a size metric, not a quality score.
 let modelInventory = [];
@@ -553,18 +566,19 @@ archiveMenu.append(
 );
 document.body.append(archiveMenu);
 async function selectRestoredProject(pid) {
-  project = pid;
-  file = offset = 0;
-  rows = [];
-  total = 0;
+  studioState.project = pid;
+  studioState.file = studioState.offset = 0;
+  studioState.rows = [];
+  studioState.total = 0;
   $("rows").replaceChildren();
   showView("home");
   await refresh(true);
 }
 hideProject.onclick = guard(async () => {
-  if (!project) throw Error("Нет выбранного проекта");
-  if (dirty.size) throw Error("Сохраните или отмените правки перед скрытием");
-  await request("hide-project", { project });
+  if (!studioState.project) throw Error("Нет выбранного проекта");
+  if (studioState.dirty.size)
+    throw Error("Сохраните или отмените правки перед скрытием");
+  await request("hide-project", { project: studioState.project });
   await selectRestoredProject(0);
   toast("Проект скрыт; весь прогресс сохранён");
 });
@@ -578,7 +592,7 @@ hiddenProjects.onclick = guard(async () => {
     restore.dataset.restoreProject = p.id;
     restore.disabled = !!p.deleting;
     restore.onclick = guard(async () => {
-      if (dirty.size) throw Error("Сохраните или отмените правки");
+      if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
       await request("restore-project", { project: p.id });
       $("infoDialog").close();
       await selectRestoredProject(p.id);
@@ -610,7 +624,7 @@ studioLifecycle.register(
   "refresh",
   "archiveRefresh",
   async ({ initial, previousProject: oldProject }) => {
-    hideProject.disabled = !project;
+    hideProject.disabled = !studioState.project;
   },
 );
 
@@ -623,13 +637,13 @@ deleteProject.id = "deleteProject";
 deleteProject.style.color = "var(--red)";
 archiveMenu.append(completeProject, completedProjects, deleteProject);
 completeProject.onclick = guard(async () => {
-  if (dirty.size) throw Error("Сохраните или отмените правки");
-  await request("complete-project", { project });
+  if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
+  await request("complete-project", { project: studioState.project });
   await selectRestoredProject(0);
   toast("Проект перенесён в завершённые; данные сохранены");
 });
 function confirmProjectDeletion(p) {
-  if (dirty.size) throw Error("Сохраните или отмените правки");
+  if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
   $("infoTitle").textContent = "Удалить проект «" + p.name + "»?";
   $("infoContent").replaceChildren(
     element("p", p.root),
@@ -658,7 +672,9 @@ function confirmProjectDeletion(p) {
   $("infoContent").scrollTop = 0;
 }
 deleteProject.onclick = guard(async () => {
-  const p = snapshot.projects.find((p) => p.id === project);
+  const p = studioState.snapshot.projects.find(
+    (p) => p.id === studioState.project,
+  );
   if (!p) throw Error("Выберите проект");
   confirmProjectDeletion(p);
 });
@@ -699,14 +715,17 @@ studioLifecycle.register(
   "refresh",
   "lifecycleRefresh",
   async ({ initial, previousProject: oldProject }) => {
-    deleteProject.disabled = !project;
+    deleteProject.disabled = !studioState.project;
     completeProject.disabled =
-      !project || !!snapshot?.counts?.empty || !snapshot?.files?.length;
-    if (oldProject && oldProject !== project) {
-      file = offset = 0;
-      rows = [];
+      !studioState.project ||
+      !!studioState.snapshot?.counts?.empty ||
+      !studioState.snapshot?.files?.length;
+    if (oldProject && oldProject !== studioState.project) {
+      studioState.file = studioState.offset = 0;
+      studioState.rows = [];
       $("rows").replaceChildren();
-      if (snapshot.files.length) file = snapshot.files[0].id;
+      if (studioState.snapshot.files.length)
+        studioState.file = studioState.snapshot.files[0].id;
       showView("home");
     }
   },
@@ -773,7 +792,9 @@ managerDone.onclick = () => archiveMenu.close();
 managerFooter.append(managerDone);
 archiveMenu.replaceChildren(managerHeader, managerBody, managerFooter);
 manageProjects.onclick = () => {
-  const selected = snapshot?.projects.find((p) => p.id === project);
+  const selected = studioState.snapshot?.projects.find(
+    (p) => p.id === studioState.project,
+  );
   setText(managerName, selected?.name || "Проект не выбран");
   setText(
     managerPath,
@@ -790,11 +811,7 @@ for (const button of [
   completedProjects,
   deleteProject,
 ]) {
-  const invoke = button.onclick;
-  button.onclick = (...args) => {
-    archiveMenu.close();
-    return invoke(...args);
-  };
+  button.addEventListener("click", () => archiveMenu.close(), true);
 }
 style.textContent += `
 .project-picker{display:flex;align-items:center;gap:8px;margin:10px 0 12px}

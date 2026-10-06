@@ -1,0 +1,21 @@
+"use strict";
+const studioState = {
+  project: 0,
+  file: 0,
+  offset: 0,
+  total: 0,
+  rows: [],
+  snapshot: null,
+  job: null,
+  busy: false,
+  lastStage: "translate",
+  dirty: new Set(),
+  viewMode: "home",
+  processTab: "queue",
+  markKind: "bad",
+  processOffset: 0,
+  marksOffset: 0,
+  processPrefs: { max_phrases: 200, max_seconds: 600, page_size: 50 },
+  processPrefsProject: 0,
+  connectionSnapshot: null,
+};

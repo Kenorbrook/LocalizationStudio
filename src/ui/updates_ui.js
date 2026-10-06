@@ -107,7 +107,7 @@ downloadUpdate.onclick = guard(async () =>
   displayUpdateState(await window.pywebview.api.download_update()),
 );
 installUpdate.onclick = guard(async () => {
-  if (dirty.size)
+  if (studioState.dirty.size)
     throw Error("Сохраните или отмените ручные правки перед установкой");
   $("infoTitle").textContent = "Установить версию " + updateState.latest + "?";
   $("infoContent").replaceChildren(

@@ -239,7 +239,8 @@ async function runDetection() {
     });
     detectionSelected.clear();
     detectionPage = 0;
-    if (project === detectionProject) updateDetectionSummary(detectionReport);
+    if (studioState.project === detectionProject)
+      updateDetectionSummary(detectionReport);
     renderDetection();
   } catch (error) {
     detectionBody.replaceChildren(element("p", error.message));
@@ -251,8 +252,8 @@ async function runDetection() {
   }
 }
 inspectButton.onclick = guard(async () => {
-  if (!project) throw Error("Сначала откройте проект");
-  detectionProject = project;
+  if (!studioState.project) throw Error("Сначала откройте проект");
+  detectionProject = studioState.project;
   detectionSelected.clear();
   detectionPage = 0;
   detectionMode = "text";
@@ -265,7 +266,8 @@ inspectButton.onclick = guard(async () => {
 rescanButton.onclick = guard(runDetection);
 closeDetectionButton.onclick = () => detectionDialog.close();
 importDetectedButton.onclick = guard(async () => {
-  if (dirty.size) throw Error("Сохраните или отмените правки перед импортом");
+  if (studioState.dirty.size)
+    throw Error("Сохраните или отмените правки перед импортом");
   detectionBusy = true;
   updateDetectionImport();
   try {
@@ -291,14 +293,14 @@ studioLifecycle.register(
   "refresh",
   "detectionRefresh",
   async ({ initial, previousProject: oldProject }) => {
-    if (initial || detectionLoadedProject !== project) {
-      const pid = project,
+    if (initial || detectionLoadedProject !== studioState.project) {
+      const pid = studioState.project,
         fetchId = ++detectionFetch;
       if (detectionLoadedProject !== pid) detectionSummary.hidden = true;
       detectionLoadedProject = pid;
       if (pid) {
         const data = await request("project-analysis?project=" + pid);
-        if (project === pid && detectionFetch === fetchId)
+        if (studioState.project === pid && detectionFetch === fetchId)
           updateDetectionSummary(data.report);
       }
     }
