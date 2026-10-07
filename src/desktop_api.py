@@ -1,6 +1,9 @@
 """Small native bridge; controllers remain private to avoid COM traversal."""
 
+import webbrowser
+
 from close_behavior import CloseApi
+from version import REPOSITORY
 
 
 class DesktopApi(CloseApi):
@@ -22,3 +25,13 @@ class DesktopApi(CloseApi):
 
     def set_update_preferences(self, values):
         return self._updates.configure(values)
+
+    def open_project_link(self, destination):
+        paths = {
+            "issues": "/issues/new/choose",
+            "source": "",
+            "guide": "/blob/main/README.md",
+        }
+        if destination not in paths:
+            raise ValueError("Неизвестная ссылка приложения")
+        return webbrowser.open("https://github.com/" + REPOSITORY + paths[destination])
