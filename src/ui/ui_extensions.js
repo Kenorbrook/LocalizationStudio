@@ -183,38 +183,3 @@ closePrefsMenu.ontoggle = () => {
   if (closePrefsMenu.open) updateCloseChoice().catch((e) => toast(e.message));
 };
 document.querySelector(".right").append(closePrefsMenu);
-const statusHelp = element("button", "ⓘ Статусы строк");
-statusHelp.id = "statusHelp";
-statusHelp.setAttribute("aria-label", "Что означают цвета строк");
-$("newProject").after(statusHelp);
-statusHelp.onclick = () => {
-  const content = $("infoContent");
-  $("infoTitle").textContent = "Цвета и статусы строк";
-  content.replaceChildren();
-  for (const [status, text] of [
-    ["empty", "Без перевода — фраза ещё не переведена."],
-    ["translated", "Переведено — получен перевод, редактура ещё не выполнена."],
-    ["edited", "После редактуры — перевод прошёл литературную редактуру."],
-    [
-      "verified",
-      "Проверено — текущую версию проверила облачная ИИ или человек.",
-    ],
-  ]) {
-    const row = element("p");
-    row.append(
-      element("span", undefined, "dot " + status),
-      document.createTextNode(text),
-    );
-    content.append(row);
-  }
-  content.append(
-    element(
-      "p",
-      "Статус относится к текущей версии текста и не гарантирует отсутствие ошибок. Ручные правки защищены от автоматической перезаписи.",
-      "sub",
-    ),
-  );
-  $("infoDialog").showModal();
-  content.scrollTop = 0;
-  $("infoClose").focus({ preventScroll: true });
-};

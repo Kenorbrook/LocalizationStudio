@@ -156,14 +156,6 @@ h2 {
 .file small {
   color: var(--muted);
 }
-.dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  margin-right: 5px;
-  background: #647580;
-}
 .translated {
   --status: var(--red);
 }
@@ -172,11 +164,6 @@ h2 {
 }
 .verified {
   --status: var(--green);
-}
-.dot.translated,
-.dot.edited,
-.dot.verified {
-  background: var(--status);
 }
 .badge {
   font-size: 11px;
