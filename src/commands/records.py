@@ -117,6 +117,10 @@ def save(store, data):
     )
 
 
+def unverify(store, data):
+    return store.unverify(int(data["id"]), int(data["revision"]))
+
+
 def undo(store, data):
     return store.undo(int(data["id"]), int(data["revision"]))
 

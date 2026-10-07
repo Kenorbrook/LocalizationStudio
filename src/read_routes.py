@@ -65,7 +65,13 @@ def preserved(store, q, port):
 def marked(store, q, port):
     from process_view import marks_page
 
-    data = marks_page(store, int(q["project"]), q["kind"], int(q.get("offset", 0)))
+    data = marks_page(
+        store,
+        int(q["project"]),
+        q["kind"],
+        int(q.get("offset", 0)),
+        [int(value) for value in q.get("retained", "").split(",") if value],
+    )
     return data
 
 

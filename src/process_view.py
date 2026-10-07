@@ -116,11 +116,26 @@ def history_page(store, pid, offset=0):
     }
 
 
-def marks_page(store, pid, kind, offset=0):
+def marks_page(store, pid, kind, offset=0, retained=()):
     if kind not in {"bad", "review"}:
         raise ValueError("Некорректная папка пометок")
-    query = "FROM record_marks m JOIN records r ON r.id=m.record JOIN files f ON f.id=r.file WHERE f.project=? AND m.kind=?"
+    retained = list(dict.fromkeys(int(rid) for rid in retained))
+    if len(retained) > 1000:
+        raise ValueError("Слишком много сохранённых строк на экране")
+    membership = "m.kind=?"
     args = [pid, kind]
+    if retained:
+        membership += (
+            " OR (m.record IS NULL AND r.status='verified' AND r.reviewer LIKE 'human%' AND r.id IN ("
+            + ",".join("?" for _ in retained)
+            + ") AND json_extract((SELECT mark_json FROM verification_snapshots v WHERE v.record=r.id ORDER BY v.revision DESC LIMIT 1),'$.kind')=?)"
+        )
+        args.extend(retained + [kind])
+    query = (
+        "FROM records r JOIN files f ON f.id=r.file LEFT JOIN record_marks m ON m.record=r.id WHERE f.project=? AND ("
+        + membership
+        + ")"
+    )
     offset = max(0, int(offset))
     with store.db() as db:
         total = db.execute("SELECT count(*) " + query, args).fetchone()[0]
@@ -129,7 +144,7 @@ def marks_page(store, pid, kind, offset=0):
             for r in db.execute(
                 f"SELECT {FIELDS} "
                 + query
-                + " ORDER BY m.at DESC,m.record DESC LIMIT 50 OFFSET ?",
+                + " ORDER BY coalesce(m.at,(SELECT json_extract(mark_json,'$.at') FROM verification_snapshots v WHERE v.record=r.id ORDER BY v.revision DESC LIMIT 1),0) DESC,r.id DESC LIMIT 50 OFFSET ?",
                 args + [offset],
             )
         ]

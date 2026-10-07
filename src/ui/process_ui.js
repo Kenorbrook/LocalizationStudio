@@ -111,6 +111,30 @@ saveHistorySettings.onclick = guard(async () => {
   if (!studioState.dirty.size) await loadRows();
   toast("Настройки процесса сохранены для проекта");
 });
+const markedVisit = { key: "", retained: new Set() };
+function syncMarkedVisit() {
+  const key =
+    studioState.viewMode === "flags"
+      ? `${studioState.project}/${studioState.markKind}`
+      : "";
+  if (key !== markedVisit.key) {
+    markedVisit.key = key;
+    markedVisit.retained.clear();
+  }
+}
+studioLifecycle.register("navigate", "markedVisit", syncMarkedVisit);
+studioLifecycle.register("refresh", "markedVisit", syncMarkedVisit);
+studioLifecycle.register("recordSaved", "markedVisit", ({ before, after }) => {
+  syncMarkedVisit();
+  if (!markedVisit.key) return;
+  if (
+    humanVerified(after) &&
+    !after.flag &&
+    before.flag === studioState.markKind
+  )
+    markedVisit.retained.add(after.id);
+  else if (!humanVerified(after)) markedVisit.retained.delete(after.id);
+});
 for (const mode of ["queue", "flags", "preserved"]) {
   studioLifecycle.registerPage(mode, () => {
     const identity = JSON.stringify([
@@ -120,12 +144,13 @@ for (const mode of ["queue", "flags", "preserved"]) {
       studioState.markKind,
       studioState.processOffset,
       studioState.marksOffset,
+      [...markedVisit.retained],
     ]);
     const paths = {
       preserved: () =>
         `preserved?project=${studioState.project}&offset=${studioState.marksOffset}`,
       flags: () =>
-        `marked?project=${studioState.project}&kind=${studioState.markKind}&offset=${studioState.marksOffset}`,
+        `marked?project=${studioState.project}&kind=${studioState.markKind}&offset=${studioState.marksOffset}&retained=${[...markedVisit.retained].join(",")}`,
       queue: () =>
         studioState.processTab === "history"
           ? `process-history?project=${studioState.project}&offset=${studioState.processOffset}`
@@ -186,6 +211,7 @@ studioLifecycle.register("render", "processRender", (data, quiet = false) => {
       );
       top.append(stamp);
     }
+    if (humanVerified(row)) continue;
     for (const [label, kind] of row.flag
       ? [["Снять пометку", ""]]
       : [
@@ -242,7 +268,7 @@ const folderSettingsOrigin = element("span");
 settingsMenu.before(folderSettingsOrigin);
 const folderReviewHint = element(
   "p",
-  "Повторная редактура всех переведённых строк этой папки, включая уже отредактированные. Пометки сохраняются до ручного снятия. Модель, контекст, языки и лимиты задаются ниже.",
+  "Повторная редактура всех переведённых строк этой папки, включая уже отредактированные. Пометки сохраняются после редактуры; снимаются вручную или кнопкой «Проверено мной». Модель, контекст, языки и лимиты задаются ниже.",
   "sub",
 );
 const folderInstruction = element("textarea");
@@ -392,7 +418,7 @@ studioLifecycle.register("render", "literalRender", (data, quiet = false) => {
         "Добавить в конец очереди, обработать следующей или перевести вручную";
       translate.onclick = guard(() => showPreservedTranslation(row));
       actions.replaceChildren(translate, contextButton);
-    } else {
+    } else if (!humanVerified(row)) {
       const menu = element("details");
       menu.append(element("summary", "Оставить оригинал без перевода"));
       const reason = element("input");

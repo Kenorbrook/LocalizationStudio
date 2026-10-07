@@ -139,15 +139,15 @@ class ProcessTests(unittest.TestCase):
             context_entry(self.store, rows[1]["id"])["confirmed_character_examples"], []
         )
 
-    def test_human_confirmation_keeps_mark_and_manual_protection(self):
+    def test_human_confirmation_clears_mark_and_keeps_manual_protection(self):
         row = self.corpus(1)[0]
         marked = self.store.mark(row["id"], 0, "review")
         saved = self.store.update(
             row["id"], marked["revision"], "Готово", "verified", "human", manual=True
         )
-        self.assertEqual(saved["flag"], "review")
+        self.assertEqual(saved["flag"], "")
         self.assertEqual(saved["manual"], 1)
-        self.assertEqual(marks_page(self.store, self.pid, "review")["total"], 1)
+        self.assertEqual(marks_page(self.store, self.pid, "review")["total"], 0)
 
     def test_latest_stage_deduplicates_phrase_history(self):
         row = self.corpus(1)[0]

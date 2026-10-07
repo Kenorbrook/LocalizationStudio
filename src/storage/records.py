@@ -231,8 +231,102 @@ class RecordsRepository:
                 "INSERT INTO history(record,revision,text,status,reviewer,reason,at) VALUES (?,?,?,?,?,?,?)",
                 (rid, revision + 1, text, status, reviewer, reason, now()),
             )
+            if status == "verified" and manual and reviewer.startswith("human"):
+                mark = db.execute(
+                    "SELECT * FROM record_marks WHERE record=?", (rid,)
+                ).fetchone()
+                db.execute(
+                    "INSERT INTO verification_snapshots VALUES (?,?,?,?)",
+                    (
+                        rid,
+                        revision + 1,
+                        r["status"],
+                        json.dumps(dict(mark) if mark else {}),
+                    ),
+                )
+                db.execute("DELETE FROM record_marks WHERE record=?", (rid,))
+            elif (
+                manual
+                and r["status"] == "verified"
+                and r["reviewer"].startswith("human")
+            ):
+                snapshot = db.execute(
+                    "SELECT * FROM verification_snapshots WHERE record=? ORDER BY revision DESC LIMIT 1",
+                    (rid,),
+                ).fetchone()
+                if snapshot:
+                    self._restore_verification_mark(db, rid, revision + 1, snapshot)
             db.execute("UPDATE errors SET resolved=1 WHERE record=?", (rid,))
         return self.record(rid)
+
+    def unverify(self, rid, revision):
+        with self.database.connect() as db:
+            r = db.execute("SELECT * FROM records WHERE id=?", (rid,)).fetchone()
+            if not r or r["revision"] != revision:
+                raise ValueError(
+                    "Строка изменилась; обновите её перед отменой проверки"
+                )
+            if r["status"] != "verified":
+                raise ValueError("Строка не отмечена как проверенная")
+            snapshot = db.execute(
+                "SELECT * FROM verification_snapshots WHERE record=? AND revision<=? ORDER BY revision DESC LIMIT 1",
+                (rid, revision),
+            ).fetchone()
+            previous = db.execute(
+                "SELECT status FROM revision_snapshots WHERE record=? AND revision=?",
+                (rid, revision - 1),
+            ).fetchone()
+            status = (
+                snapshot["before_status"]
+                if snapshot
+                else previous[0] if previous else "translated"
+            )
+            if status not in {"translated", "edited"}:
+                status = "translated"
+            db.execute(
+                "INSERT OR IGNORE INTO revision_snapshots VALUES (?,?,?,?,?,?)",
+                (rid, revision, r["text"], r["status"], r["manual"], r["reviewer"]),
+            )
+            db.execute(
+                "UPDATE records SET status=?,reviewer='human',revision=revision+1 WHERE id=? AND revision=?",
+                (status, rid, revision),
+            )
+            if snapshot:
+                self._restore_verification_mark(db, rid, revision + 1, snapshot)
+            db.execute(
+                "INSERT INTO history(record,revision,text,status,reviewer,reason,at) VALUES (?,?,?,?,?,?,?)",
+                (
+                    rid,
+                    revision + 1,
+                    r["text"],
+                    status,
+                    "human",
+                    "Отмена ручной проверки; текст сохранён",
+                    now(),
+                ),
+            )
+        return self.record(rid)
+
+    def _restore_verification_mark(self, db, rid, revision, snapshot):
+        mark = json.loads(snapshot["mark_json"])
+        if (
+            mark
+            and not db.execute(
+                "SELECT 1 FROM record_marks WHERE record=?", (rid,)
+            ).fetchone()
+        ):
+            db.execute(
+                "INSERT INTO record_marks(record,kind,at,was_manual,protected_revision,origin,independent) VALUES (?,?,?,?,?,?,?)",
+                (
+                    rid,
+                    mark["kind"],
+                    mark["at"],
+                    mark["was_manual"],
+                    revision,
+                    mark["origin"],
+                    mark.get("independent", 1),
+                ),
+            )
 
     def undo(self, rid, revision):
         with self.database.connect() as db:
@@ -270,6 +364,29 @@ class RecordsRepository:
                     revision,
                 ),
             )
+            snapshot = db.execute(
+                "SELECT * FROM verification_snapshots WHERE record=? ORDER BY revision DESC LIMIT 1",
+                (rid,),
+            ).fetchone()
+            if previous["status"] == "verified" and previous["reviewer"].startswith(
+                "human"
+            ):
+                db.execute(
+                    "INSERT INTO verification_snapshots VALUES (?,?,?,?)",
+                    (
+                        rid,
+                        revision + 1,
+                        snapshot["before_status"] if snapshot else "translated",
+                        snapshot["mark_json"] if snapshot else "{}",
+                    ),
+                )
+                db.execute("DELETE FROM record_marks WHERE record=?", (rid,))
+            elif (
+                r["status"] == "verified"
+                and r["reviewer"].startswith("human")
+                and snapshot
+            ):
+                self._restore_verification_mark(db, rid, revision + 1, snapshot)
             db.execute(
                 "INSERT INTO history(record,revision,text,status,reviewer,reason,at) VALUES (?,?,?,?,?,?,?)",
                 (

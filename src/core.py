@@ -78,6 +78,9 @@ class Store:
             rid, revision, text, status, reviewer, reason, manual
         )
 
+    def unverify(self, rid, revision):
+        return self.records.unverify(rid, revision)
+
     def undo(self, rid, revision):
         return self.records.undo(rid, revision)
 

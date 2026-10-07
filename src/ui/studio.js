@@ -299,6 +299,9 @@ async function loadRows(quiet = false) {
       ),
     );
 }
+function humanVerified(row) {
+  return row.status === "verified" && row.reviewer?.startsWith("human");
+}
 function renderRecordCards(data, quiet = false) {
   studioState.rows = data.rows;
   studioState.total = data.total;
@@ -343,7 +346,6 @@ function renderRecordCards(data, quiet = false) {
     let area = element("textarea");
     area.value = r.text;
     area.setAttribute("aria-label", "Перевод строки " + (r.position + 1));
-    area.oninput = () => studioState.dirty.add(r.id);
     right.append(area);
     pair.append(right);
     let actions = element("div", undefined, "record-actions");
@@ -351,6 +353,7 @@ function renderRecordCards(data, quiet = false) {
       let b = element("button", text);
       b.onclick = guard(action);
       actions.append(b);
+      return b;
     }
     button("Контекст", () => showRecordContext(r.id));
     button("История", async () => {
@@ -378,28 +381,32 @@ function renderRecordCards(data, quiet = false) {
         await refresh();
         toast("ИИ сможет менять эту строку при следующем запуске этапа");
       });
-    button("Сохранить", async () => {
-      await request("save", {
+    const saveButton = button("Сохранить", async () => {
+      const saved = await request("save", {
         id: r.id,
         revision: r.revision,
         text: area.value,
       });
       studioState.dirty.delete(r.id);
+      studioLifecycle.notify("recordSaved", { before: r, after: saved });
       await refresh();
+      await loadRows();
       toast("Правка сохранена и защищена");
     });
-    button("✓ Проверено мной", async () => {
-      await request("save", {
+    const verifyButton = button("✓ Проверено мной", async () => {
+      const saved = await request("save", {
         id: r.id,
         revision: r.revision,
         text: area.value,
         verified: true,
       });
       studioState.dirty.delete(r.id);
+      studioLifecycle.notify("recordSaved", { before: r, after: saved });
       await refresh();
-      toast("Текущая версия проверена человеком");
+      await loadRows();
+      toast("Проверено человеком · пометки сняты");
     });
-    button("Отменить правку", async () => {
+    const cancelEdit = button("Отменить правку", async () => {
       if (studioState.dirty.has(r.id)) {
         const latest = await request("current?id=" + r.id);
         area.value = latest.text;
@@ -407,22 +414,44 @@ function renderRecordCards(data, quiet = false) {
         await loadRows();
         toast("Несохранённые изменения отменены");
       } else {
-        await request("undo", { id: r.id, revision: r.revision });
+        const saved = await request("undo", { id: r.id, revision: r.revision });
+        studioLifecycle.notify("recordSaved", { before: r, after: saved });
         await loadRows();
         await refresh();
         toast("Сохранённая правка отменена");
       }
     });
-    const cancelEdit = actions.lastChild;
-    cancelEdit.disabled = !r.manual;
-    area.addEventListener("input", () => (cancelEdit.disabled = false));
-    if (r.manual) {
-      const unlock = [...actions.children].find(
-        (b) => b.textContent === "Снять защиту ручной правки",
-      );
+    const cancelVerification = button("Отменить проверку", async () => {
+      const saved = await request("unverify", {
+        id: r.id,
+        revision: r.revision,
+      });
+      studioLifecycle.notify("recordSaved", { before: r, after: saved });
+      await refresh();
+      await loadRows();
+      toast("Проверка отменена · текст сохранён");
+    });
+    const unlock = [...actions.children].find(
+      (b) => b.textContent === "Снять защиту ручной правки",
+    );
+    if (unlock)
       unlock.title =
         "Позволить ИИ снова изменять эту строку при следующем переводе или проверке";
+    function updateEditorActions() {
+      const changed = area.value !== r.text;
+      if (changed) studioState.dirty.add(r.id);
+      else studioState.dirty.delete(r.id);
+      const verified = humanVerified(r);
+      saveButton.hidden = !changed;
+      verifyButton.hidden = verified && !changed;
+      cancelVerification.hidden = !verified || changed;
+      cancelEdit.hidden =
+        !changed && (verified || !r.manual || !r.reviewer?.startsWith("human"));
+      cancelEdit.disabled = !changed && !r.manual;
+      if (unlock) unlock.hidden = verified;
     }
+    area.oninput = updateEditorActions;
+    updateEditorActions();
     card.append(top, pair, actions);
     const old = existing.get(r.id);
     destination.append(

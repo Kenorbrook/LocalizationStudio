@@ -10,6 +10,7 @@ def initialize(db):
     CREATE TABLE IF NOT EXISTS records(id INTEGER PRIMARY KEY,file INTEGER,position INTEGER,source TEXT,text TEXT DEFAULT '',speaker TEXT,scene TEXT,locator TEXT,status TEXT DEFAULT 'empty',revision INTEGER DEFAULT 0,manual INTEGER DEFAULT 0,reviewer TEXT DEFAULT '',UNIQUE(file,position,source));
     CREATE INDEX IF NOT EXISTS records_file ON records(file,position);
     CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY,record INTEGER,revision INTEGER,text TEXT,status TEXT,reviewer TEXT,reason TEXT,at TEXT);
+    CREATE INDEX IF NOT EXISTS history_record_revision ON history(record,revision);
     CREATE TABLE IF NOT EXISTS jobs(id INTEGER PRIMARY KEY,project INTEGER,stage TEXT,provider TEXT,settings TEXT,state TEXT,done INTEGER DEFAULT 0,total INTEGER DEFAULT 0,current INTEGER,error TEXT DEFAULT '',pid INTEGER,heartbeat REAL DEFAULT 0,created TEXT);
     CREATE TABLE IF NOT EXISTS queue(job INTEGER,record INTEGER,state TEXT DEFAULT 'pending',PRIMARY KEY(job,record));
     CREATE TABLE IF NOT EXISTS errors(id INTEGER PRIMARY KEY,project INTEGER,job INTEGER,record INTEGER,message TEXT,at TEXT,resolved INTEGER DEFAULT 0);
@@ -28,6 +29,7 @@ def initialize(db):
     CREATE TABLE IF NOT EXISTS cache_owners(project INTEGER,key TEXT,PRIMARY KEY(project,key));
     CREATE TABLE IF NOT EXISTS id_counters(name TEXT PRIMARY KEY,next_id INTEGER);
     CREATE TABLE IF NOT EXISTS schema_versions(name TEXT PRIMARY KEY);
+    CREATE TABLE IF NOT EXISTS verification_snapshots(record INTEGER,revision INTEGER,before_status TEXT,mark_json TEXT DEFAULT '{}',PRIMARY KEY(record,revision),FOREIGN KEY(record) REFERENCES records(id) ON DELETE CASCADE);
     CREATE TABLE IF NOT EXISTS record_marks(record INTEGER PRIMARY KEY,kind TEXT,at REAL,was_manual INTEGER,protected_revision INTEGER);
     """)
     if "origin" not in {r[1] for r in db.execute("PRAGMA table_info(record_marks)")}:
@@ -108,3 +110,38 @@ def initialize(db):
         WHEN OLD.state='pending' AND NEW.state IN ('done','error','protected')
         BEGIN UPDATE queue SET finished_at=CAST(strftime('%s','now') AS REAL) WHERE job=NEW.job AND record=NEW.record; END;"""
     )
+
+    if not db.execute(
+        "SELECT 1 FROM schema_versions WHERE name='human-verification-marks-v1'"
+    ).fetchone():
+        # Repair marks that existed when a legacy human verification was saved.
+        rows = db.execute(
+            "SELECT r.id,r.revision,h.revision checked_revision,s.status before_status,m.* FROM records r JOIN history h ON h.record=r.id AND h.revision=(SELECT max(revision) FROM history WHERE record=r.id AND status='verified' AND reviewer LIKE 'human%') LEFT JOIN revision_snapshots s ON s.record=r.id AND s.revision=h.revision-1 JOIN record_marks m ON m.record=r.id WHERE r.status='verified' AND r.reviewer LIKE 'human%' AND m.protected_revision<=h.revision"
+        ).fetchall()
+        import json
+
+        for row in rows:
+            mark = {
+                key: row[key]
+                for key in [
+                    "kind",
+                    "at",
+                    "was_manual",
+                    "protected_revision",
+                    "origin",
+                    "independent",
+                ]
+            }
+            db.execute(
+                "INSERT OR IGNORE INTO verification_snapshots VALUES (?,?,?,?)",
+                (
+                    row["id"],
+                    row["revision"],
+                    row["before_status"] or "translated",
+                    json.dumps(mark),
+                ),
+            )
+            db.execute("DELETE FROM record_marks WHERE record=?", (row["id"],))
+        db.execute(
+            "INSERT OR IGNORE INTO schema_versions VALUES ('human-verification-marks-v1')"
+        )

@@ -22,6 +22,7 @@ HANDLERS = {
     "mark": records.mark,
     "save": records.save,
     "undo": records.undo,
+    "unverify": records.unverify,
     "unlock": records.unlock,
     "proposal": records.proposal,
     "enqueue-error-retry": jobs.enqueue_error_retry,
