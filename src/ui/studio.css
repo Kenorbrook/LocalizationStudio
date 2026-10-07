@@ -519,3 +519,31 @@ aside {
   gap: 10px;
   margin: 16px 0;
 }
+
+#folderReviewControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+#folderReviewDialog {
+  padding: 0;
+  width: 620px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 40px);
+  overflow: hidden;
+}
+.folder-review-body {
+  padding: 18px 22px;
+  max-height: calc(100vh - 125px);
+  overflow: auto;
+}
+.folder-review-body label {
+  display: block;
+  margin: 12px 0 6px;
+}
+.folder-review-body input:not([type="checkbox"]),
+.folder-review-body select {
+  width: 100%;
+  box-sizing: border-box;
+}

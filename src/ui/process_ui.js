@@ -259,7 +259,6 @@ studioLifecycle.register(
   },
 );
 
-// Folder review reuses the same model/language/context controls as ordinary jobs.
 const folderControls = element("div");
 folderControls.id = "folderReviewControls";
 folderControls.hidden = true;
@@ -299,16 +298,63 @@ folderControls.append(
   manualLabel,
   element("div", undefined, "flex wrap"),
 );
-folderControls.lastChild.append(folderRun, folderClear);
+const folderOpen = element(
+  "button",
+  "Отправить на редактуру с новыми параметрами",
+);
+folderOpen.id = "folderReviewOpen";
+const folderDialog = element("dialog");
+folderDialog.id = "folderReviewDialog";
+folderDialog.setAttribute("aria-labelledby", "folderReviewTitle");
+const folderHeader = element("div", undefined, "updates-header");
+const folderTitle = element("h2");
+folderTitle.id = "folderReviewTitle";
+const folderClose = element("button", "×");
+folderClose.id = "folderReviewClose";
+folderClose.setAttribute("aria-label", "Закрыть параметры редактуры");
+folderHeader.append(folderTitle, folderClose);
+const folderBody = element("div", undefined, "folder-review-body");
+folderBody.append(...folderControls.childNodes);
+folderBody.lastChild.append(folderRun);
+folderDialog.append(folderHeader, folderBody);
+document.body.append(folderDialog);
+folderControls.append(folderOpen, folderClear);
+let folderSettingsWasOpen = false;
+function restoreFolderSettings() {
+  if (settingsMenu.parentNode !== folderBody) return;
+  folderSettingsOrigin.after(settingsMenu);
+  settingsMenu.open = folderSettingsWasOpen;
+  settingsMenu.hidden = studioState.viewMode === "flags";
+}
+folderDialog.addEventListener("close", restoreFolderSettings);
+folderDialog.addEventListener("cancel", restoreFolderSettings);
+folderClose.onclick = () => folderDialog.close();
+folderOpen.onclick = () => {
+  folderSettingsWasOpen = settingsMenu.open;
+  folderBody.insertBefore(settingsMenu, folderReviewHint);
+  settingsMenu.hidden = false;
+  settingsMenu.open = true;
+  setText(
+    folderTitle,
+    studioState.markKind === "bad"
+      ? "Редактура папки «Брак»"
+      : "Редактура папки «Ручная проверка»",
+  );
+  folderDialog.showModal();
+  folderBody.scrollTop = 0;
+  folderClose.focus({ preventScroll: true });
+};
 let folderIdentity = "";
 function updateFolderControls() {
   const visible = studioState.viewMode === "flags";
   folderControls.hidden = !visible;
   $("scope").hidden = visible;
+  if (!visible && folderDialog.open) {
+    folderDialog.close();
+    restoreFolderSettings();
+  }
+  settingsMenu.hidden = visible && !folderDialog.open;
   if (visible) {
-    if (settingsMenu.parentNode !== folderControls)
-      folderControls.insertBefore(settingsMenu, folderReviewHint);
-    settingsMenu.open = true;
     const identity = studioState.project + ":" + studioState.markKind;
     if (identity !== folderIdentity) {
       folderInstruction.value =
@@ -323,8 +369,6 @@ function updateFolderControls() {
         ? "Снять «Брак» со всех строк проекта"
         : "Снять «Ручная проверка» со всех строк проекта",
     );
-  } else if (settingsMenu.parentNode === folderControls) {
-    folderSettingsOrigin.after(settingsMenu);
   }
 }
 folderInstruction.oninput = () =>
@@ -343,6 +387,8 @@ folderRun.onclick = guard(async () => {
     mark_kind: studioState.markKind,
     allow_manual: folderManual.checked,
   });
+  folderDialog.close();
+  restoreFolderSettings();
   await refresh();
   toast("Редактура папки запущена; пометки останутся");
 });
