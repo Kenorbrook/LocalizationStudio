@@ -30,6 +30,12 @@ path.write_text(
 store.import_files(pid, [path])
 jid = store.create_job(pid, "translate", "local", {})
 store.error(jid, 3, "Не помещается в контекст — тест")
+with store.db() as connection:
+    fixture_error = connection.execute("SELECT id FROM errors LIMIT 1").fetchone()[0]
+    connection.executemany(
+        "INSERT INTO errors(project,job,record,message,at,budget_json) SELECT project,job,record,message,at,budget_json FROM errors WHERE id=?",
+        [(fixture_error,)] * 100,
+    )
 for rid in (51, 52):
     store.update(rid, 0, "Текст " + str(rid), "translated", "local:fixture")
     with store.db() as connection:

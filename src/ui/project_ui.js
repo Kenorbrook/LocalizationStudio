@@ -51,7 +51,7 @@ studioLifecycle.register("mcpInfo", "connectionStatus", () => {
 function showView(mode) {
   studioState.viewMode = mode;
   home.hidden = mode !== "home";
-  textPane.hidden = mode === "home";
+  textPane.hidden = mode === "home" || mode === "errors";
   back.hidden = mode === "home";
   projectNav.hidden = mode === "home";
   $("files").hidden = mode !== "text";
@@ -124,6 +124,14 @@ function updateProjectScreen() {
       "Выберите просмотр всего текста или текущей очереди",
     );
     setText("breadcrumb", "ПРОЕКТ");
+  }
+  if (studioState.viewMode === "errors") {
+    setText("fileTitle", "Ошибки этого проекта");
+    setText(
+      "description",
+      "Повторы добавляются отдельными очередями. Закрытие формы повтора возвращает к списку ошибок.",
+    );
+    setText("breadcrumb", (p?.name || "") + " / ОШИБКИ");
   }
   if (studioState.viewMode === "queue") {
     setText("fileTitle", "Процесс перевода");
