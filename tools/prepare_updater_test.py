@@ -142,7 +142,7 @@ def main():
     probe.write_text(
         "(async()=>{try{const state=await window.pywebview.api.get_update_state();await refreshUpdates();window.__featureProbe={passed:state.supported&&state.current==='"
         + VERSION
-        + "'&&$('updatesMenu').firstElementChild.tagName==='SUMMARY',state};}catch(e){window.__featureProbe={passed:false,error:e.message};}})()",
+        + "'&&$('projectSidebar').contains($('appFooter'))&&$('updatesDialog').tagName==='DIALOG',state};}catch(e){window.__featureProbe={passed:false,error:e.message};}})()",
         encoding="utf-8",
     )
     gui = subprocess.Popen(

@@ -1,8 +1,39 @@
-const updatesMenu = element("details");
-updatesMenu.id = "updatesMenu";
-updatesMenu.append(element("summary", "Обновления приложения"));
-const updateVersion = element("p", "Версия приложения…", "sub");
+const leftSidebar = document.querySelector("main > aside:not(.right)");
+leftSidebar.id = "projectSidebar";
+const sidebarContent = element("div");
+sidebarContent.id = "sidebarContent";
+sidebarContent.append(...leftSidebar.childNodes);
+leftSidebar.append(sidebarContent);
+const appFooter = element("footer");
+appFooter.id = "appFooter";
+const versionRow = element("div", undefined, "app-version-row");
+const updateVersion = element("span", "Версия…", "sub");
 updateVersion.id = "updateVersion";
+const appSettings = element("button", "⚙");
+appSettings.id = "appSettings";
+appSettings.title = "Настройки приложения";
+appSettings.setAttribute("aria-label", "Настройки приложения");
+versionRow.append(updateVersion, appSettings);
+const footerUpdate = element("button", "Обновить", "primary");
+footerUpdate.id = "footerUpdate";
+footerUpdate.hidden = true;
+appFooter.append(versionRow, footerUpdate);
+leftSidebar.append(appFooter);
+const updatesDialog = element("dialog");
+updatesDialog.id = "updatesDialog";
+updatesDialog.setAttribute("aria-labelledby", "updatesTitle");
+const updatesHeader = element("div", undefined, "updates-header");
+const updatesTitle = element("h2", "Настройки приложения");
+updatesTitle.id = "updatesTitle";
+const updatesClose = element("button", "×");
+updatesClose.id = "updatesClose";
+updatesClose.setAttribute("aria-label", "Закрыть настройки");
+updatesHeader.append(updatesTitle, updatesClose);
+const updatesBody = element("div");
+updatesBody.id = "updatesBody";
+updatesBody.append(element("h3", "Обновления"));
+updatesDialog.append(updatesHeader, updatesBody);
+document.body.append(updatesDialog);
 const updateMessage = element("p", undefined, "sub");
 updateMessage.id = "updateMessage";
 updateMessage.setAttribute("role", "status");
@@ -54,32 +85,29 @@ for (const [key, title] of [
       await window.pywebview.api.set_update_preferences(preferences),
     );
   });
-  updatesMenu.append(label);
+  updatesBody.append(label);
 }
-updatesMenu
-  .querySelector("summary")
-  .after(updateVersion, updateMessage, updateProgress, actions, releaseNotes);
-updatesMenu.append(
-  element(
-    "p",
-    "Источник: GitHub Releases · Kenorbrook/LocalizationStudio. Интернет нужен только для проверки и скачивания. Автоустановка ждёт завершения задач и сохранения ручных правок; затем приложение перезапустится. Перед установкой создаётся резервная копия.",
-    "sub",
-  ),
+updatesBody
+  .querySelector("h3")
+  .after(updateMessage, updateProgress, actions, releaseNotes);
+const updateSource = element(
+  "p",
+  "Источник: GitHub Releases · Kenorbrook/LocalizationStudio. Перед установкой создаётся резервная копия; приложение перезапустится, сохранив очередь и настройки.",
+  "sub",
 );
-setupCard.append(updatesMenu);
-const updatesStyle = element("style");
-updatesStyle.textContent =
-  ".update-actions{display:flex;flex-direction:column;gap:8px;margin:12px 0}.update-option{display:flex;align-items:flex-start;gap:7px;line-height:1.5;margin:12px 0}.update-option input{flex:0 0 auto;margin-top:4px}.update-actions button{width:100%}#updateReleaseNotes{margin:12px 0}";
-document.head.append(updatesStyle);
+updateSource.id = "updateSource";
+updateSource.hidden = true;
+updatesBody.append(updateSource);
 let updateState = null;
 function displayUpdateState(state) {
   updateState = state;
-  setText(
-    updateVersion,
-    "Установлена версия " +
-      state.current +
-      (state.latest ? " · последняя " + state.latest : ""),
+  setText(updateVersion, "Версия " + state.current);
+  const available = !!state.available;
+  footerUpdate.hidden = !available || !state.supported;
+  footerUpdate.disabled = ["checking", "downloading", "installing"].includes(
+    state.phase,
   );
+  updateSource.hidden = !available;
   setText(updateMessage, state.message);
   const busy = ["checking", "downloading", "installing"].includes(state.phase);
   checkUpdates.disabled = busy;
@@ -121,24 +149,32 @@ installUpdate.onclick = guard(async () => {
   confirm.onclick = guard(async () => {
     displayUpdateState(await window.pywebview.api.install_update());
     $("infoDialog").close();
-    updatesMenu.open = true;
+    openAppSettings();
   });
   $("infoContent").append(confirm);
   $("infoDialog").showModal();
 });
-updatesMenu.ontoggle = () => {
-  if (updatesMenu.open) refreshUpdates().catch((error) => toast(error.message));
-};
+function openAppSettings() {
+  if (!updatesDialog.open) updatesDialog.showModal();
+  updatesBody.scrollTop = 0;
+  updatesClose.focus({ preventScroll: true });
+  refreshUpdates().catch((error) => toast(error.message));
+}
+appSettings.onclick = openAppSettings;
+updatesClose.onclick = () => updatesDialog.close();
+footerUpdate.onclick = guard(async () => {
+  openAppSettings();
+  if (updateState?.phase === "ready") await installUpdate.onclick();
+  else if (updateState?.available) await downloadUpdate.onclick();
+});
 window.addEventListener("pywebviewready", () =>
   refreshUpdates().catch((error) => toast(error.message)),
 );
 window.addEventListener("DOMContentLoaded", () => {
   refreshUpdates().catch((error) => toast(error.message));
   setInterval(() => {
-    if (
-      updatesMenu.open ||
-      ["checking", "downloading", "installing"].includes(updateState?.phase)
-    )
-      refreshUpdates().catch((error) => setText(updateMessage, error.message));
-  }, 1000);
+    refreshUpdates().catch((error) => {
+      if (updatesDialog.open) setText(updateMessage, error.message);
+    });
+  }, 2500);
 });

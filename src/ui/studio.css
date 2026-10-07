@@ -410,3 +410,99 @@ aside {
   overflow-anchor: none;
   margin-bottom: 0;
 }
+
+#projectSidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+  min-height: 0;
+}
+#sidebarContent {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 20px 14px;
+  scrollbar-gutter: stable;
+  overflow-anchor: none;
+}
+#appFooter {
+  flex: none;
+  border-top: 1px solid var(--line);
+  padding: 12px 14px;
+  background: var(--bg);
+}
+.app-version-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+#appSettings {
+  font-size: 20px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+#footerUpdate {
+  width: 100%;
+  margin-top: 10px;
+}
+#updatesDialog {
+  padding: 0;
+  width: 520px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 40px);
+  overflow: hidden;
+}
+.updates-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--line);
+}
+.updates-header h2 {
+  margin: 0;
+  font-size: 18px;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--ink);
+}
+#updatesClose {
+  font-size: 24px;
+  padding: 0;
+  width: 36px;
+  height: 36px;
+}
+#updatesBody {
+  padding: 8px 22px 22px;
+  max-height: calc(100vh - 125px);
+  overflow: auto;
+}
+.update-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+}
+.update-actions button {
+  width: 100%;
+}
+.update-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  line-height: 1.5;
+  margin: 16px 0;
+}
+.update-option input {
+  width: auto;
+  flex: none;
+  margin: 3px 0 0;
+}
+#updateReleaseNotes {
+  margin: 12px 0;
+}

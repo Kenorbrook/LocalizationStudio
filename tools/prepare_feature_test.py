@@ -4,6 +4,9 @@ sys.stdout.reconfigure(encoding="utf-8")
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
+subprocess.run(
+    ["node", "--check", str(root / "tools/project_feature_probe.js")], check=True
+)
 reports = root / "reports"
 reports.mkdir(exist_ok=True)
 sys.path.insert(0, str(root / "src"))
