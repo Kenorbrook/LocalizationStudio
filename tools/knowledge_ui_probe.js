@@ -7,6 +7,11 @@
     const check = (key, value) => {results[key] = !!value; if (!value) throw Error(key);};
     showView("home");
     check("analysisControls", !!$("analyzeKnowledge") && !!$("viewKnowledge"));
+    $("provider").value = "cloud";
+    $("cloud_model").value = "venice-uncensored-1-2";
+    $("provider").dispatchEvent(new Event("change"));
+    check("analysisShowsSelectedModel", $("analyzeKnowledge").textContent.includes("облако: venice-uncensored-1-2"));
+    check("providerIncludedInSavedSettings", settings().provider === "cloud");
     check("automaticContextDefault", $("use_project_knowledge").checked && $("analyze_before_translate").checked);
     await $("viewKnowledge").onclick();
     check("dictionaryOpen", $("knowledgeDialog").open);

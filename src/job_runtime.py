@@ -1,6 +1,6 @@
 """Job settings validation and worker process launch."""
 
-import json, math, subprocess, sys, time
+import json, math, subprocess, sys, time, threading
 from pathlib import Path
 from core import APP_HOME, ROOT, SHARED
 from providers import secret
@@ -57,6 +57,8 @@ def _launch(store, jid):
         args = [
             "powershell.exe",
             "-NoProfile",
+            "-ExecutionPolicy",
+            "Bypass",
             "-File",
             str(SHARED / "run_translation.ps1"),
             "-GameRoot",
@@ -94,6 +96,35 @@ def _launch(store, jid):
                 "UPDATE jobs SET pid=? WHERE id=? AND state='queued'",
                 (process.pid, jid),
             )
+    threading.Thread(
+        target=_watch_start, args=(store, jid, process), daemon=True
+    ).start()
+
+
+def _watch_start(store, jid, process):
+    deadline = time.monotonic() + 45
+    try:
+        code = process.wait(timeout=45)
+        while code == 0 and time.monotonic() < deadline:
+            with store.db() as db:
+                row = db.execute("SELECT state FROM jobs WHERE id=?", (jid,)).fetchone()
+            if not row or row[0] != "queued":
+                return
+            time.sleep(0.25)
+        error = (
+            f"Не удалось запустить обработчик (код {code}). Подробности в журнале запуска; очередь сохранена"
+            if code != 0
+            else "Обработчик не подтвердил запуск за 45 секунд; очередь сохранена"
+        )
+    except subprocess.TimeoutExpired:
+        error = "Обработчик не подтвердил запуск за 45 секунд; очередь сохранена"
+    except Exception:
+        return
+    with store.db() as db:
+        db.execute(
+            "UPDATE jobs SET state='paused',worker_active=0,error=? WHERE id=? AND state='queued'",
+            (error, jid),
+        )
 
 
 def validate_job_settings(store, pid, provider, settings, old):

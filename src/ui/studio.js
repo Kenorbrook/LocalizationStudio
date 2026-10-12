@@ -56,6 +56,7 @@ function settings() {
   let s = {};
   for (let id of [
     "model",
+    "provider",
     "model_sort",
     "context",
     "source_language",

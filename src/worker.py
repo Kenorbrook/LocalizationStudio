@@ -9,7 +9,7 @@ from long_text import JobStopped
 def run(store, jid, provider_factory=Provider):
     with store.db() as db:
         job = db.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
-        if not job or job["state"] not in {"queued", "paused"}:
+        if not job or job["state"] != "queued":
             raise ValueError("Задача уже запущена или завершена")
         project = dict(
             db.execute(
@@ -17,7 +17,7 @@ def run(store, jid, provider_factory=Provider):
             ).fetchone()
         )
         claimed = db.execute(
-            "UPDATE jobs SET state='running',worker_active=1,pid=?,heartbeat=?,run_started=?,run_done=0,run_elapsed=0,error='' WHERE id=? AND state IN ('queued','paused')",
+            "UPDATE jobs SET state='running',worker_active=1,pid=?,heartbeat=?,run_started=?,run_done=0,run_elapsed=0,error='' WHERE id=? AND state='queued'",
             (os.getpid(), time.time(), time.time(), jid),
         )
         if not claimed.rowcount:

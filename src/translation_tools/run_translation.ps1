@@ -30,7 +30,7 @@ function Resolve-TranslationPython {
 $ResolvedGame = (Resolve-Path -LiteralPath $GameRoot).Path
 if ($StudioJob -gt 0) {
     if (-not $VisibleWindowChild) {
-        $StudioArguments = @('-NoExit','-NoProfile','-File',('"{0}"' -f $PSCommandPath),'-GameRoot',('"{0}"' -f $ResolvedGame),'-StudioJob',"$StudioJob",'-StudioDb',('"{0}"' -f $StudioDb),'-VisibleWindowChild')
+        $StudioArguments = @('-NoExit','-NoProfile','-ExecutionPolicy','Bypass','-File',('"{0}"' -f $PSCommandPath),'-GameRoot',('"{0}"' -f $ResolvedGame),'-StudioJob',"$StudioJob",'-StudioDb',('"{0}"' -f $StudioDb),'-VisibleWindowChild')
         if ($StudioWorkerExecutable) { $StudioArguments += @('-StudioWorkerExecutable',('"{0}"' -f $StudioWorkerExecutable)) }
         if ($StudioPython) { $StudioArguments += @('-StudioPython',('"{0}"' -f $StudioPython),'-StudioApp',('"{0}"' -f $StudioApp)) }
         $StudioShell = New-Object -ComObject Shell.Application
@@ -59,7 +59,7 @@ if (-not (Test-Path -LiteralPath $Runtime -PathType Leaf)) { throw "Python runti
 
 if (-not $VisibleWindowChild) {
     $ChildArguments = @(
-        '-NoExit', '-NoProfile', '-File', ('"{0}"' -f $PSCommandPath),
+        '-NoExit', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $PSCommandPath),
         '-GameRoot', ('"{0}"' -f $ResolvedGame),
         '-Mode', $Mode, '-Model', $Model,
         '-Limit', "$Limit", '-ChunkItems', "$ChunkItems",

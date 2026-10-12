@@ -38,7 +38,10 @@ class StudioTests(unittest.TestCase):
     def test_worker_launch_through_visible_translation_runner(self):
         self.corpus([{"source": "Hello"}])
         jid = self.store.create_job(self.project, "translate", "local", {})
-        with patch("job_runtime.subprocess.Popen") as popen:
+        with (
+            patch("job_runtime.subprocess.Popen") as popen,
+            patch("job_runtime.threading.Thread"),
+        ):
             popen.return_value.pid = 1234
             launch(self.store, jid)
         with self.store.db() as db:
@@ -361,6 +364,8 @@ class StudioTests(unittest.TestCase):
             self.assertEqual(job["done"], 1)
             self.assertEqual(job["run_done"], 1)
             first_started = job["run_started"]
+        with self.store.db() as db:
+            db.execute("UPDATE jobs SET state='queued' WHERE id=?", (jid,))
         run(self.store, jid, Translator)
         with self.store.db() as db:
             resumed = db.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
@@ -674,6 +679,8 @@ class StudioTests(unittest.TestCase):
             def call(self, mode, e):
                 return {"items": [{"id": e[0]["id"], "text": "Привет"}]}
 
+        with self.store.db() as db:
+            db.execute("UPDATE jobs SET state='queued' WHERE id=?", (jid,))
         run(self.store, jid, Online)
         self.assertEqual(records(self.store, fid)["rows"][0]["text"], "Привет")
 

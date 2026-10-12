@@ -16,6 +16,24 @@ viewKnowledge.id = "viewKnowledge";
 const knowledgeActions = element("div", undefined, "flex wrap");
 knowledgeActions.append(analyzeKnowledge, viewKnowledge);
 knowledgeTools.append(knowledgeActions);
+function updateKnowledgeModel() {
+  const cloud = $("provider").value === "cloud";
+  const model = $(cloud ? "cloud_model" : "model").value || "модель не выбрана";
+  setText(
+    analyzeKnowledge,
+    `Анализировать проект · ${cloud ? "облако" : "локально"}: ${model}`,
+  );
+}
+for (const id of ["provider", "cloud_model", "model"]) {
+  $(id).addEventListener("input", updateKnowledgeModel);
+  $(id).addEventListener("change", updateKnowledgeModel);
+}
+studioLifecycle.register(
+  "refresh",
+  "knowledgeModelLabel",
+  updateKnowledgeModel,
+);
+updateKnowledgeModel();
 const autoKnowledgeLabel = element("label");
 const autoKnowledge = element("input");
 autoKnowledge.id = "analyze_before_translate";

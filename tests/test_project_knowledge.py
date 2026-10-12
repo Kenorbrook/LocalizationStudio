@@ -224,6 +224,8 @@ class KnowledgeTests(unittest.TestCase):
             def call(self, *args):
                 return {"facts": []}
 
+        with self.store.db() as db:
+            db.execute("UPDATE jobs SET state='queued' WHERE id=?", (jid,))
         run(self.store, jid, Online)
         with self.store.db() as db:
             self.assertEqual(
@@ -364,13 +366,71 @@ class KnowledgeTests(unittest.TestCase):
         from job_runtime import launch
 
         jid = self.store.create_job(self.pid, "analyze", "local", self.settings)
-        with patch("job_runtime.subprocess.Popen") as popen:
+        with (
+            patch("job_runtime.subprocess.Popen") as popen,
+            patch("job_runtime.threading.Thread"),
+        ):
             popen.return_value.pid = 1234
             launch(self.store, jid)
         args = popen.call_args.args[0]
         self.assertIn("powershell.exe", args)
         self.assertIn("-StudioJob", args)
         self.assertIn("-StudioPython", args)
+        self.assertEqual(args[args.index("-ExecutionPolicy") + 1], "Bypass")
+
+    def test_failed_launcher_preserves_queue_and_pauses(self):
+        from job_runtime import _watch_start
+        from unittest.mock import Mock
+
+        jid = self.store.create_job(self.pid, "analyze", "local", self.settings)
+        _watch_start(self.store, jid, Mock(**{"wait.return_value": 1}))
+        with self.store.db() as db:
+            job = db.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
+            self.assertEqual((job["state"], job["worker_active"]), ("paused", 0))
+            self.assertIn("код 1", job["error"])
+            self.assertEqual(
+                db.execute("SELECT count(*) FROM queue WHERE job=?", (jid,)).fetchone()[
+                    0
+                ],
+                4,
+            )
+        with self.assertRaises(ValueError):
+            run(self.store, jid)
+
+    def test_launch_timeout_does_not_pause_claimed_worker(self):
+        import subprocess
+        from job_runtime import _watch_start
+        from unittest.mock import Mock
+
+        jid = self.store.create_job(self.pid, "analyze", "local", self.settings)
+        process = Mock(**{"wait.side_effect": subprocess.TimeoutExpired("test", 45)})
+        with self.store.db() as db:
+            db.execute(
+                "UPDATE jobs SET state='running',worker_active=1 WHERE id=?", (jid,)
+            )
+        _watch_start(self.store, jid, process)
+        with self.store.db() as db:
+            self.assertEqual(
+                db.execute("SELECT state FROM jobs WHERE id=?", (jid,)).fetchone()[0],
+                "running",
+            )
+
+    def test_unclaimed_launcher_timeout_pauses(self):
+        import subprocess
+        from job_runtime import _watch_start
+        from unittest.mock import Mock
+
+        jid = self.store.create_job(self.pid, "analyze", "local", self.settings)
+        _watch_start(
+            self.store,
+            jid,
+            Mock(**{"wait.side_effect": subprocess.TimeoutExpired("test", 45)}),
+        )
+        with self.store.db() as db:
+            self.assertEqual(
+                db.execute("SELECT state FROM jobs WHERE id=?", (jid,)).fetchone()[0],
+                "paused",
+            )
 
 
 if __name__ == "__main__":
