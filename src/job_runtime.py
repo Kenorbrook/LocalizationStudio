@@ -1,8 +1,8 @@
 """Job settings validation and worker process launch."""
 
-import json, math, subprocess, sys
+import json, math, subprocess, sys, time
 from pathlib import Path
-from core import APP_HOME, ROOT
+from core import APP_HOME, ROOT, SHARED
 from providers import secret
 
 
@@ -43,11 +43,38 @@ def _launch(store, jid):
         args = [str(executable)]
     else:
         args = [sys.executable, str(ROOT / "app.py")]
-    args += ["--worker", str(jid), "--db", str(store.path)]
+    with store.db() as db:
+        job = db.execute(
+            "SELECT j.stage,p.root FROM jobs j JOIN projects p ON p.id=j.project WHERE j.id=?",
+            (jid,),
+        ).fetchone()
+    if job["stage"] == "analyze" or job["stage"] in {"translate", "review", "cloud"}:
+        worker_args = (
+            ["-StudioWorkerExecutable", args[0]]
+            if getattr(sys, "frozen", False)
+            else ["-StudioPython", sys.executable, "-StudioApp", str(ROOT / "app.py")]
+        )
+        args = [
+            "powershell.exe",
+            "-NoProfile",
+            "-File",
+            str(SHARED / "run_translation.ps1"),
+            "-GameRoot",
+            job["root"],
+            "-StudioJob",
+            str(jid),
+            "-StudioDb",
+            str(store.path),
+            *worker_args,
+        ]
+    else:
+        args += ["--worker", str(jid), "--db", str(store.path)]
     folder = store.path.parent / "worker-logs"
     folder.mkdir(parents=True, exist_ok=True)
     with store.db() as db:
-        db.execute("UPDATE jobs SET worker_active=1 WHERE id=?", (jid,))
+        db.execute(
+            "UPDATE jobs SET worker_active=1,heartbeat=? WHERE id=?", (time.time(), jid)
+        )
     try:
         with (folder / f"job-{jid}-process.log").open("ab") as output:
             process = subprocess.Popen(
@@ -61,8 +88,12 @@ def _launch(store, jid):
         with store.db() as db:
             db.execute("UPDATE jobs SET worker_active=0 WHERE id=?", (jid,))
         raise
-    with store.db() as db:
-        db.execute("UPDATE jobs SET pid=? WHERE id=?", (process.pid, jid))
+    if job["stage"] not in {"analyze", "translate", "review", "cloud"}:
+        with store.db() as db:
+            db.execute(
+                "UPDATE jobs SET pid=? WHERE id=? AND state='queued'",
+                (process.pid, jid),
+            )
 
 
 def validate_job_settings(store, pid, provider, settings, old):
@@ -70,6 +101,9 @@ def validate_job_settings(store, pid, provider, settings, old):
         raise ValueError("Некорректный провайдер")
     if not isinstance(settings.get("auto_foreign", True), bool):
         raise ValueError("Некорректная настройка определения языка")
+    for field in ("analyze_before_translate", "use_project_knowledge"):
+        if field in settings and not isinstance(settings[field], bool):
+            raise ValueError("Некорректная настройка: " + field)
     if "speaker_profiles" in old:
         settings["speaker_profiles"] = old["speaker_profiles"]
     if len(str(settings.get("review_instruction", ""))) > 4000:

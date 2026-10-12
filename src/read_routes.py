@@ -151,7 +151,14 @@ def errors(store, q, port):
     return data
 
 
+def knowledge(store, q, port):
+    from project_knowledge import page
+
+    return page(store, int(q["project"]), int(q.get("offset", 0)), q.get("state", ""))
+
+
 ROUTES = {
+    "/api/knowledge": knowledge,
     "/api/state": state,
     "/api/completed-projects": completed_projects,
     "/api/hidden-projects": hidden_projects,

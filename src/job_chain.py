@@ -69,12 +69,23 @@ def _schedule(store, pid):
         ).fetchone():
             return None
         first = db.execute(
-            "SELECT id FROM jobs WHERE project=? AND state='waiting' ORDER BY id LIMIT 1",
+            "SELECT id,settings FROM jobs WHERE project=? AND state='waiting' ORDER BY id LIMIT 1",
             (pid,),
         ).fetchone()
         if not first:
             return None
         jid = first[0]
+        dependency = json.loads(first["settings"]).get("_analysis_job")
+        if dependency:
+            prior = db.execute(
+                "SELECT state FROM jobs WHERE id=? AND project=?", (dependency, pid)
+            ).fetchone()
+            if not prior or prior["state"] != "done":
+                db.execute(
+                    "UPDATE jobs SET state='held',error='Сначала завершите предварительный анализ проекта' WHERE id=?",
+                    (jid,),
+                )
+                return None
         db.execute(
             "UPDATE jobs SET state='queued' WHERE id=? AND state='waiting'", (jid,)
         )

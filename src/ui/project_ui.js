@@ -369,9 +369,12 @@ function updateTaskActions() {
     !!studioState.job &&
     ["running", "queued", "paused", "held"].includes(studioState.job.state);
   const stageName =
-    { translate: "перевод", review: "редактуру", cloud: "облачную проверку" }[
-      studioState.job?.stage
-    ] || "задачу";
+    {
+      translate: "перевод",
+      review: "редактуру",
+      cloud: "облачную проверку",
+      analyze: "анализ проекта",
+    }[studioState.job?.stage] || "задачу";
   const primary = ["paused", "held"].includes(studioState.job?.state)
     ? "Продолжить " + stageName
     : studioState.job?.state === "running"

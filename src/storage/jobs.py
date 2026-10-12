@@ -23,7 +23,7 @@ class JobsRepository:
         record_ids=None,
         defer=False,
     ):
-        if stage not in {"translate", "review", "cloud"} or provider not in {
+        if stage not in {"translate", "review", "cloud", "analyze"} or provider not in {
             "local",
             "cloud",
             "mcp",
@@ -50,7 +50,7 @@ class JobsRepository:
         query = (
             "SELECT r.id FROM records r JOIN files f ON f.id=r.file WHERE f.project=?"
         )
-        if not (mark_kind and allow_manual):
+        if stage != "analyze" and not (mark_kind and allow_manual):
             query += " AND r.manual=0"
         if mark_kind:
             settings.update(
@@ -70,7 +70,7 @@ class JobsRepository:
         if mark_kind:
             query += " AND r.status<>'preserved' AND r.text<>'' AND EXISTS(SELECT 1 FROM record_marks m WHERE m.record=r.id AND m.kind=?)"
             args.append(mark_kind)
-        else:
+        elif stage != "analyze":
             query += " AND r.status IN " + (
                 "('empty')"
                 if stage == "translate"

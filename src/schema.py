@@ -31,6 +31,10 @@ def initialize(db):
     CREATE TABLE IF NOT EXISTS schema_versions(name TEXT PRIMARY KEY);
     CREATE TABLE IF NOT EXISTS verification_snapshots(record INTEGER,revision INTEGER,before_status TEXT,mark_json TEXT DEFAULT '{}',PRIMARY KEY(record,revision),FOREIGN KEY(record) REFERENCES records(id) ON DELETE CASCADE);
     CREATE TABLE IF NOT EXISTS record_marks(record INTEGER PRIMARY KEY,kind TEXT,at REAL,was_manual INTEGER,protected_revision INTEGER);
+    CREATE TABLE IF NOT EXISTS knowledge_batches(key TEXT PRIMARY KEY,project INTEGER,result TEXT,at TEXT);
+    CREATE TABLE IF NOT EXISTS knowledge_items(id INTEGER PRIMARY KEY,project INTEGER,batch TEXT,kind TEXT,subject TEXT,attribute TEXT,value TEXT,data TEXT,state TEXT,revision INTEGER DEFAULT 0,at TEXT);
+    CREATE INDEX IF NOT EXISTS knowledge_project ON knowledge_items(project,state,subject);
+    CREATE TABLE IF NOT EXISTS knowledge_evidence(item INTEGER,record INTEGER,source_hash TEXT,PRIMARY KEY(item,record));
     """)
     if "origin" not in {r[1] for r in db.execute("PRAGMA table_info(record_marks)")}:
         db.execute("ALTER TABLE record_marks ADD COLUMN origin TEXT DEFAULT 'unknown'")

@@ -155,6 +155,10 @@ class Provider:
     def prompt(self, mode):
         source = self.settings.get("source_language", "English")
         target = self.settings.get("target_language", "Russian")
+        if mode == "analyze":
+            from knowledge_analysis import analysis_prompt
+
+            return analysis_prompt(source, target, self.rules)
         prompt = self.profile[
             {
                 "translate": "translate_prompt",
@@ -245,14 +249,21 @@ class Provider:
             key = secret(self.project["id"])
             if not key:
                 raise ServiceUnavailable("Не задан API-ключ")
+            body = {
+                "model": self.settings.get("cloud_model", ""),
+                "messages": messages,
+                "response_format": {"type": "json_object"},
+                "max_tokens": int(self.settings.get("max_output", 1200)),
+            }
+            if urlparse(endpoint).hostname == "api.venice.ai":
+                body["max_completion_tokens"] = body.pop("max_tokens")
+                body["venice_parameters"] = {
+                    "include_venice_system_prompt": False,
+                    "enable_web_search": "off",
+                }
             result = json_request(
                 endpoint + "/chat/completions",
-                {
-                    "model": self.settings.get("cloud_model", ""),
-                    "messages": messages,
-                    "response_format": {"type": "json_object"},
-                    "max_tokens": int(self.settings.get("max_output", 1200)),
-                },
+                body,
                 headers={"Authorization": "Bearer " + key},
             )
             text = result["choices"][0]["message"]["content"]

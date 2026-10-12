@@ -130,6 +130,10 @@ def process(provider, stage, entry, direct):
             after.pop()
         elif small.get("confirmed_character_examples"):
             small["confirmed_character_examples"].pop(0)
+        elif small.get("project_memory"):
+            small["project_memory"].pop()
+        elif small.get("context_questions"):
+            small["context_questions"].pop()
         else:
             raise RequestTooLarge(
                 "Правила проекта не помещаются в контекст модели; увеличьте размер контекста"
@@ -137,6 +141,9 @@ def process(provider, stage, entry, direct):
     prepared["context_before"] = small["context_before"]
     prepared["context_after"] = small["context_after"]
     prepared["confirmed_character_examples"] = small["confirmed_character_examples"]
+    for field in ("project_memory", "context_questions"):
+        if field in small:
+            prepared[field] = small[field]
     settings = getattr(provider, "settings", {})
     store = Store(settings["_studio_db"]) if settings.get("_studio_db") else None
     source = entry["english"]

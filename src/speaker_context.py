@@ -121,7 +121,7 @@ def context_entry(store, rid, rules=None, profiles=None, settings=None):
         }
 
     r["kind"] = next((x["kind"] for x in neighbors if x["id"] == rid), "unknown")
-    return {
+    entry = {
         "id": rid,
         "translate_symbols": bool(r.get("preserve_override")),
         "english": r["source"],
@@ -132,3 +132,7 @@ def context_entry(store, rid, rules=None, profiles=None, settings=None):
         "context_after": [line(x) for x in neighbors if x["position"] > r["position"]],
         "confirmed_character_examples": examples,
     }
+    from project_knowledge import select_context
+
+    entry.update(select_context(store, r, neighbors, settings))
+    return entry

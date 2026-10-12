@@ -71,6 +71,11 @@ def run(store, jid, provider_factory=Provider):
         emit(f"PROGRESS {progress[0]}/{progress[1]} | {rate:.1f} lines/min")
 
     try:
+        if job["stage"] == "analyze":
+            from knowledge_analysis import run_analysis
+
+            run_analysis(store, job, project, settings, provider_factory, emit)
+            return
         provider = None
         effective_settings = None
         while True:
@@ -267,10 +272,13 @@ def run(store, jid, provider_factory=Provider):
         thread.join(timeout=10)
         log.close()
         with store.db() as db:
-            db.execute(
-                "UPDATE jobs SET worker_active=0,run_done=?,run_elapsed=max(run_elapsed,?) WHERE id=?",
-                (processed, elapsed, jid),
-            )
+            if job["stage"] == "analyze":
+                db.execute("UPDATE jobs SET worker_active=0 WHERE id=?", (jid,))
+            else:
+                db.execute(
+                    "UPDATE jobs SET worker_active=0,run_done=?,run_elapsed=max(run_elapsed,?) WHERE id=?",
+                    (processed, elapsed, jid),
+                )
         from job_chain import schedule
 
         schedule(store, job["project"])

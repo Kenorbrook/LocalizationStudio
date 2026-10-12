@@ -54,17 +54,37 @@ def job(store, data):
             db.execute("SELECT settings FROM projects WHERE id=?", (pid,)).fetchone()[0]
         )
     settings = validate_job_settings(store, pid, data["provider"], dict(settings), old)
-    jid = store.create_job(
-        pid,
-        data["stage"],
-        data["provider"],
-        settings,
-        data.get("file"),
-        bool(data.get("retry")),
-        data.get("mark_kind"),
-        bool(data.get("allow_manual")),
-        data.get("record_ids"),
-    )
+    if data["stage"] == "analyze" and data["provider"] == "mcp":
+        raise ValueError("Для анализа выберите локальную модель или облачный API")
+    analysis_job = None
+    if data["stage"] == "translate" and settings.get("analyze_before_translate"):
+        if data["provider"] == "mcp":
+            raise ValueError(
+                "Для предварительного анализа выберите локальную модель или облачный API"
+            )
+        analysis_job = store.create_job(pid, "analyze", data["provider"], settings)
+        settings["_analysis_job"] = analysis_job
+    try:
+        jid = store.create_job(
+            pid,
+            data["stage"],
+            data["provider"],
+            settings,
+            data.get("file"),
+            bool(data.get("retry")),
+            data.get("mark_kind"),
+            bool(data.get("allow_manual")),
+            data.get("record_ids"),
+            defer=analysis_job is not None,
+        )
+    except Exception:
+        if analysis_job:
+            with store.db() as db:
+                db.execute(
+                    "UPDATE jobs SET state='cancelled' WHERE id=? AND state='queued'",
+                    (analysis_job,),
+                )
+        raise
     with store.db() as db:
         if data.get("record_overrides") is not None:
             from error_workflow import save_overrides
@@ -74,18 +94,25 @@ def job(store, data):
             )
         if data.get("persist_settings", True):
             db.execute(
-                "UPDATE projects SET settings=? WHERE id=?", (dump(settings), pid)
+                "UPDATE projects SET settings=? WHERE id=?",
+                (
+                    dump({k: v for k, v in settings.items() if k != "_analysis_job"}),
+                    pid,
+                ),
             )
     try:
-        job_runtime.launch(store, jid)
+        job_runtime.launch(store, analysis_job or jid)
     except Exception:
         with store.db() as db:
             db.execute(
                 "UPDATE jobs SET state='paused',error='Не удалось запустить обработчик' WHERE id=?",
-                (jid,),
+                (analysis_job or jid,),
             )
         raise ValueError("Не удалось запустить обработчик; задача сохранена")
-    return {"job": jid}
+    return {
+        "job": analysis_job or jid,
+        "translation_job": jid if analysis_job else None,
+    }
 
 
 def control(store, data):
@@ -108,6 +135,16 @@ def control(store, data):
                     "Дождитесь завершения текущего запроса перед продолжением"
                 )
             settings = json.loads(job["settings"])
+            dependency = settings.get("_analysis_job")
+            if dependency:
+                prior = db.execute(
+                    "SELECT state FROM jobs WHERE id=? AND project=?",
+                    (dependency, job["project"]),
+                ).fetchone()
+                if not prior or prior[0] != "done":
+                    raise ValueError(
+                        "Сначала завершите предварительный анализ проекта; при его отмене отмените ожидающий перевод и запустите новую цепочку"
+                    )
             from error_workflow import resume_settings, requeue
 
             settings = resume_settings(settings, data.get("settings", {}))

@@ -118,12 +118,18 @@ class ProjectsRepository:
                     (pid, pid),
                 )
             db.execute("DELETE FROM cache_owners WHERE project=?", (pid,))
+            db.execute(
+                "DELETE FROM knowledge_evidence WHERE item IN (SELECT id FROM knowledge_items WHERE project=?)",
+                (pid,),
+            )
             db.execute(f"DELETE FROM records WHERE id IN ({record_query})", (pid,))
             for table in [
                 "files",
                 "jobs",
                 "errors",
                 "project_analysis",
+                "knowledge_items",
+                "knowledge_batches",
                 "process_preferences",
             ]:
                 db.execute(f"DELETE FROM {table} WHERE project=?", (pid,))

@@ -1,8 +1,9 @@
 """Explicit command registry. Domain handlers do not depend on HTTP."""
 
-from . import projects, records, jobs, settings
+from . import projects, records, jobs, settings, knowledge
 
 HANDLERS = {
+    "knowledge-decision": knowledge.knowledge_decision,
     "complete-project": projects.complete_project,
     "delete-project": projects.delete_project,
     "hide-project": projects.hide_project,

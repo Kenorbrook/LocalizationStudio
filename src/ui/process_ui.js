@@ -738,7 +738,7 @@ studioLifecycle.register("refresh", "chainRefresh", async (context) => {
       ),
       description = element(
         "div",
-        `${{ translate: "Перевод", review: "Редактура", cloud: "Проверка" }[j.stage]} · ${(j.provider === "cloud" ? s.cloud_model : j.provider === "mcp" ? s.mcp_model_hint : s.model) || "MCP"} · ${j.provider} · ${j.done}/${j.total} строк`,
+        `${{ translate: "Перевод", review: "Редактура", cloud: "Проверка", analyze: "Анализ проекта" }[j.stage]} · ${(j.provider === "cloud" ? s.cloud_model : j.provider === "mcp" ? s.mcp_model_hint : s.model) || "MCP"} · ${j.provider} · ${j.done}/${j.total} строк`,
         "sub",
       ),
       parameters = element(
