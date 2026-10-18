@@ -343,11 +343,62 @@ reviewMenu.append(
   right.querySelector('[data-stage="cloud"]'),
 );
 const cloudConnection = $("endpoint").closest("details");
-reviewMenu.append(cloudConnection);
+const cloudAdvanced = element("details");
+cloudAdvanced.id = "cloudAdvanced";
+cloudAdvanced.append(element("summary", "Дополнительно: облачные модели"));
+const cloudEnabled = element("input");
+cloudEnabled.type = "checkbox";
+cloudEnabled.id = "cloud_enabled";
+cloudEnabled.style.width = "auto";
+const cloudEnabledLabel = element("label");
+cloudEnabledLabel.append(
+  cloudEnabled,
+  document.createTextNode(" Использовать облачные модели в этом проекте"),
+);
+cloudAdvanced.append(cloudEnabledLabel, cloudConnection, $("saveSettings"));
+settingsMenu.before(cloudAdvanced);
+const cloudReviewButton = reviewMenu.querySelector('[data-stage="cloud"]');
+function updateCloudAvailability() {
+  const enabled = cloudEnabled.checked;
+  const option = $("provider").querySelector('option[value="cloud"]');
+  option.hidden = !enabled;
+  option.disabled = !enabled;
+  cloudConnection.hidden = !enabled;
+  cloudReviewButton.hidden = !enabled;
+  if (!enabled && $("provider").value === "cloud") {
+    $("provider").value = "local";
+    $("provider").dispatchEvent(new Event("change"));
+  }
+}
+cloudEnabled.onchange = updateCloudAvailability;
+studioLifecycle.register("settings", "cloudOptIn", () => ({
+  cloud_enabled: cloudEnabled.checked,
+}));
+let cloudProject = 0;
+studioLifecycle.register("refresh", "cloudOptIn", () => {
+  if (cloudProject !== studioState.project) {
+    cloudProject = studioState.project;
+    const project = studioState.snapshot.projects.find(
+      (p) => p.id === cloudProject,
+    );
+    cloudEnabled.checked =
+      JSON.parse(project?.settings || "{}").cloud_enabled === true;
+  }
+  updateCloudAvailability();
+});
+updateCloudAvailability();
 settingsMenu.before(reviewMenu);
 setText(right.querySelector('[data-stage="review"]'), "Литературная редакция");
 setText(right.querySelector('[data-stage="cloud"]'), "Облачная проверка");
 mainAction.onclick = guard(async () => {
+  if (
+    ["paused", "held"].includes(studioState.job?.state) &&
+    studioState.job.provider === "cloud" &&
+    !cloudEnabled.checked
+  )
+    throw Error(
+      "Это облачная очередь. Включите облачные модели в дополнительных настройках или отмените её и создайте локальную задачу",
+    );
   if (
     studioState.job?.state === "held" ||
     (studioState.job?.state === "paused" &&
@@ -448,7 +499,6 @@ studioLifecycle.register(
 );
 settingsMenu.addEventListener("input", updateTaskActions);
 settingsMenu.addEventListener("change", updateTaskActions);
-if (studioState.snapshot) updateTaskActions();
 
 // Ollama metadata is local. Parameter count is a size metric, not a quality score.
 let modelInventory = [];
@@ -468,6 +518,7 @@ for (const [value, label] of [
 const modelInfo = element("p", undefined, "sub");
 modelInfo.id = "modelInfo";
 $("model").after(modelSortLabel, modelSort, modelInfo);
+if (studioState.snapshot) updateTaskActions();
 function parameterCount(value) {
   const match = String(value || "").match(/([\d.]+)\s*([BKM])/i);
   return match

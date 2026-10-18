@@ -480,6 +480,11 @@ async function start(stage, retry = false) {
   if (!studioState.project) throw Error("Сначала откройте проект");
   if (studioState.dirty.size)
     throw Error("Сохраните ручные правки перед запуском");
+  if (
+    (stage === "cloud" || $("provider").value === "cloud") &&
+    !$("cloud_enabled").checked
+  )
+    throw Error("Включите облачные модели в дополнительных настройках проекта");
   studioState.lastStage = stage;
   await request("job", {
     project: studioState.project,
@@ -569,6 +574,14 @@ for (let b of document.querySelectorAll("[data-stage]"))
 $("retry").onclick = guard(() => start(studioState.lastStage, true));
 for (let mode of ["pause", "resume", "cancel"])
   $(mode).onclick = guard(async () => {
+    if (
+      mode === "resume" &&
+      studioState.job?.provider === "cloud" &&
+      !$("cloud_enabled").checked
+    )
+      throw Error(
+        "Это облачная очередь. Включите облачные модели в дополнительных настройках или отмените её и создайте локальную задачу",
+      );
     await request("control", {
       id: studioState.job.id,
       mode,
