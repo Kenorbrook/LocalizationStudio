@@ -19,6 +19,18 @@ INT = {"type": "integer"}
 STR = {"type": "string"}
 TOOLS = [
     {
+        "name": "app_ui_state",
+        "description": "Read the live desktop UI: current screen, dialogs, visible text, fields and unsaved records. Secrets are redacted. Does not focus or control the desktop; requires an open Studio window using this database.",
+        "inputSchema": schema({}),
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
+        "name": "app_screenshot",
+        "description": "Capture a fresh PNG directly from the Studio WebView2 viewport, with UI state. Does not move the pointer, activate windows, or capture other apps. Returns an error if the renderer is unavailable; never restores a minimized window.",
+        "inputSchema": schema({}),
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    },
+    {
         "name": "list_projects",
         "description": "List imported game projects. Read only.",
         "inputSchema": schema({}),
@@ -182,6 +194,10 @@ def serve_stdio(store):
 
 
 def call(store, name, args):
+    if name in {"app_ui_state", "app_screenshot"}:
+        from inspection_client import inspect_app
+
+        return inspect_app(store.path, name == "app_screenshot")
     if name == "list_projects":
         with store.db() as db:
             return [dict(r) for r in db.execute("SELECT id,name,root FROM projects")]
@@ -264,16 +280,22 @@ def handle(store, request):
             result = {"tools": TOOLS}
         elif method == "tools/call":
             try:
+                value = call(store, params["name"], params.get("arguments", {}))
+                picture = (
+                    value.pop("image", None)
+                    if params["name"] == "app_screenshot"
+                    else None
+                )
                 result = {
                     "content": [
                         {
                             "type": "text",
-                            "text": dump(
-                                call(store, params["name"], params.get("arguments", {}))
-                            ),
+                            "text": dump(value),
                         }
                     ]
                 }
+                if picture:
+                    result["content"].append({"type": "image", **picture})
             except Exception as e:
                 result = {
                     "content": [{"type": "text", "text": str(e)}],

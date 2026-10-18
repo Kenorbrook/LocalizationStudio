@@ -4,6 +4,7 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from unittest.mock import Mock
 
 from core import Store
 from http_server import serve
@@ -15,8 +16,12 @@ class HttpTransportTests(unittest.TestCase):
         self.store = Store(Path(self.folder.name) / "workspace.sqlite3")
         self.ready = threading.Event()
         self.server = None
+        self.inspection = Mock()
         self.thread = threading.Thread(
-            target=serve, args=(self.store, 0, False, self.started), daemon=True
+            target=serve,
+            args=(self.store, 0, False, self.started),
+            kwargs={"inspection": self.inspection},
+            daemon=True,
         )
         self.thread.start()
         self.assertTrue(self.ready.wait(5))
@@ -83,6 +88,29 @@ class HttpTransportTests(unittest.TestCase):
     def test_negative_body_length_is_rejected_without_waiting(self):
         headers = {"X-Studio-Token": self.token, "Content-Length": "-1"}
         self.assertEqual(self.request("/api/save", "POST", headers=headers)[0], 400)
+
+    def test_inspection_requires_token_and_stays_read_only(self):
+        for route in ["state", "screenshot"]:
+            self.assertEqual(self.request("/api/inspection/" + route)[0], 403)
+        self.inspection.inspect.assert_not_called()
+        self.inspection.inspect.return_value = {
+            "session": "test",
+            "ui": {"view": "text"},
+        }
+        for route, picture in [("state", False), ("screenshot", True)]:
+            status, headers, body = self.request(
+                "/api/inspection/" + route, headers={"X-Studio-Token": self.token}
+            )
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(body)["ui"]["view"], "text")
+            self.assertEqual(headers["Cache-Control"], "no-store")
+            self.inspection.inspect.assert_called_with(picture)
+        self.inspection.inspect.side_effect = RuntimeError("renderer unavailable")
+        status, _, body = self.request(
+            "/api/inspection/screenshot", headers={"X-Studio-Token": self.token}
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(json.loads(body)["error"], "renderer unavailable")
 
     def test_query_and_command_use_project_scoped_handlers(self):
         pid = self.store.project(self.folder.name)["id"]

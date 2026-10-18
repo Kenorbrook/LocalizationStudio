@@ -10,6 +10,12 @@ root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(root / "src"))
 from update_installer import replace_application
 from version import VERSION
+from install_when_closed import installed_processes
+
+if installed_processes():
+    raise RuntimeError(
+        "Close the installed application and MCP workers before replacing files"
+    )
 
 reports = root / "reports"
 reports.mkdir(exist_ok=True)

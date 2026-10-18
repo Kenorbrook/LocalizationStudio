@@ -22,7 +22,7 @@ UI_RESOURCES = {
 }
 
 
-def serve(store, port, open_browser, ready=None):
+def serve(store, port, open_browser, ready=None, inspection=None):
     token_path = store.path.with_name("server.token")
     if token_path.exists():
         token = token_path.read_text(encoding="ascii").strip()
@@ -73,6 +73,13 @@ def serve(store, port, open_browser, ready=None):
                     )
                 if self.headers.get("X-Studio-Token") != token:
                     return self.respond({"error": "Нужен токен приложения"}, 403)
+                if inspection and url.path in {
+                    "/api/inspection/state",
+                    "/api/inspection/screenshot",
+                }:
+                    return self.respond(
+                        inspection.inspect(url.path.endswith("/screenshot"))
+                    )
                 try:
                     data = read_request(store, url.path, q, port)
                 except UnknownRoute:

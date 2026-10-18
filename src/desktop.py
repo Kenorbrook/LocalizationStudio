@@ -15,10 +15,21 @@ def main():
     parser.add_argument("--db", default=str(DEFAULT_DB))
     parser.add_argument("--worker", type=int)
     parser.add_argument("--mcp", action="store_true")
+    parser.add_argument("--inspect", choices=["state", "screenshot"])
+    parser.add_argument("--output")
+    parser.add_argument(
+        "--hidden",
+        action="store_true",
+        help="Start in tray without activating the window",
+    )
     parser.add_argument("--smoke-report")
     parser.add_argument("--ui-test-script")
     parser.add_argument("--resume-update")
     args = parser.parse_args()
+    if args.inspect:
+        from inspection_client import cli_main
+
+        raise SystemExit(cli_main(args.db, args.inspect, args.output))
     store = Store(args.db)
     if args.worker:
         from worker import run
@@ -55,7 +66,9 @@ def main():
     from foreign_language import refresh_language_reviews
 
     refresh_language_reviews(store)
-    logdir = APP_HOME / "logs"
+    logdir = (
+        (store.path.parent / "test-logs") if args.smoke_report else APP_HOME / "logs"
+    )
     logdir.mkdir(parents=True, exist_ok=True)
     if sys.stdout is None:
         sys.stdout = (logdir / "desktop.log").open("a", encoding="utf-8", buffering=1)
@@ -67,13 +80,22 @@ def main():
 
     close_controller = CloseController(store)
     updates = UpdateController(store, close_controller)
+    from app_inspection import AppInspection
+
+    inspection = AppInspection(store.path)
     ready = threading.Event()
     servers = []
     failures = []
 
     def backend():
         try:
-            serve(store, 0, False, lambda server: (servers.append(server), ready.set()))
+            serve(
+                store,
+                0,
+                False,
+                lambda server: (servers.append(server), ready.set()),
+                inspection,
+            )
         except Exception as e:
             failures.append(str(e))
             ready.set()
@@ -92,14 +114,21 @@ def main():
         width=1420,
         height=940,
         min_size=(1000, 650),
+        hidden=args.hidden,
+        focus=not args.hidden,
         background_color="#11171b",
         js_api=DesktopApi(close_controller, updates),
     )
     close_controller.window = window
+    inspection.window = window
+    inspection.port = server.server_port
     window.events.closing += close_controller.on_closing
 
     def loaded():
         close_controller.initialize()
+        if args.hidden:
+            close_controller.ui(lambda: setattr(close_controller.tray, "Visible", True))
+        inspection.publish()
         if args.resume_update:
             try:
                 resume_after_update(store, args.resume_update)
@@ -173,9 +202,12 @@ def main():
             gui="edgechromium",
             debug=False,
             private_mode=True,
-            storage_path=str(APP_HOME / "webview-cache"),
+            storage_path=str(
+                (store.path.parent if args.smoke_report else APP_HOME) / "webview-cache"
+            ),
         )
     finally:
+        inspection.dispose()
         updates.dispose()
         close_controller.dispose()
         server.shutdown()

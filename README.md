@@ -102,6 +102,8 @@
 Облако необязательно. В настройках можно указать адрес совместимого Chat Completions API, модель и свой API-ключ. Ключ хранится в Windows Credential Manager, не в репозитории и не в SQLite.
 
 Пример конфигурации: [mcp_config.example.json](mcp_config.example.json). Замените пути на своё расположение приложения и базы. MCP запускается через `LocalizationWorker.exe --mcp --db <путь>`.
+
+В версии 0.4.1 инструменты `app_ui_state` и `app_screenshot` читают живое окно и получают PNG из WebView2 без управления мышью, клавиатурой или фокусом. CLI: `LocalizationWorker.exe --inspect state` и `LocalizationWorker.exe --inspect screenshot --output <новый файл.png>`. [Описание и ограничения](docs/APP_INSPECTION.md).
 Автоматическая генерация через MCP доступна только клиентам с поддержкой `sampling`. Клиенты без sampling могут читать проект и предлагать правки. Имя модели может определяться самим клиентом.
 При использовании облака/MCP выбранные тексты и контекст передаются соответствующему провайдеру.
 
