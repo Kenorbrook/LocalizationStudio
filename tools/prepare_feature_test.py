@@ -1,9 +1,12 @@
-import sys, json, subprocess, time
+import sys, json, subprocess, time, argparse
 
 sys.stdout.reconfigure(encoding="utf-8")
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
+parser = argparse.ArgumentParser()
+parser.add_argument("--source", action="store_true")
+args = parser.parse_args()
 subprocess.run(
     ["node", "--check", str(root / "tools/project_feature_probe.js")], check=True
 )
@@ -73,7 +76,11 @@ client.stdin.flush()
 assert "result" in json.loads(client.stdout.readline())
 gui = subprocess.Popen(
     [
-        str(exe),
+        *(
+            [sys.executable, str(root / "src/desktop.py")]
+            if args.source
+            else [str(exe)]
+        ),
         "--db",
         str(db),
         "--smoke-report",
@@ -96,37 +103,11 @@ try:
 finally:
     client.stdin.close()
     client.wait(timeout=5)
-    import ctypes
-
-    u = ctypes.WinDLL("user32")
-    u.FindWindowW.argtypes = [ctypes.c_wchar_p, ctypes.c_wchar_p]
-    u.FindWindowW.restype = ctypes.c_void_p
-    # Close only this fixture window by enumerating its process id.
-    callback = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
-
-    def close(h, _):
-        process = ctypes.c_ulong()
-        u.GetWindowThreadProcessId.argtypes = [
-            ctypes.c_void_p,
-            ctypes.POINTER(ctypes.c_ulong),
-        ]
-        u.GetWindowThreadProcessId(h, ctypes.byref(process))
-        if process.value == gui.pid:
-            u.PostMessageW.argtypes = [
-                ctypes.c_void_p,
-                ctypes.c_uint,
-                ctypes.c_void_p,
-                ctypes.c_void_p,
-            ]
-            u.PostMessageW(h, 0x10, None, None)
-        return True
-
-    (fixture / "desktop_preferences.json").write_text('{"close_choice":"exit"}')
-    u.EnumWindows(callback(close), None)
-    gui.wait(timeout=15)
-    # Delete only this synthetic fixture after its process has exited.
+    if gui.poll() is None:
+        gui.terminate()
+        gui.wait(timeout=15)
     import shutil
 
     if fixture.resolve().parent != (root / "qa-project-features").resolve():
-        raise RuntimeError("Unexpected fixture path")
+        raise RuntimeError("Unexpected fixture location")
     shutil.rmtree(fixture)

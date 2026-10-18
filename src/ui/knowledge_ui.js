@@ -19,10 +19,8 @@ knowledgeTools.append(knowledgeActions);
 function updateKnowledgeModel() {
   const cloud = $("provider").value === "cloud";
   const model = $(cloud ? "cloud_model" : "model").value || "модель не выбрана";
-  setText(
-    analyzeKnowledge,
-    `Анализировать проект · ${cloud ? "облако" : "локально"}: ${model}`,
-  );
+  setText(analyzeKnowledge, "Обновить справочник");
+  analyzeKnowledge.dataset.modelDescription = `${cloud ? "Облако" : "Локально"}: ${model}`;
 }
 for (const id of ["provider", "cloud_model", "model"]) {
   $(id).addEventListener("input", updateKnowledgeModel);

@@ -107,16 +107,11 @@ function updateProjectScreen() {
   }
   const counts = studioState.snapshot.counts;
   const total = Object.values(counts).reduce((a, b) => a + b, 0);
-  const translated =
-    (counts.translated || 0) + (counts.edited || 0) + (counts.verified || 0);
   setText(
     summary,
-    `Всего строк: ${total} · Есть перевод: ${translated} · Без перевода: ${counts.empty || 0}\nСохранено без перевода: ${counts.preserved || 0} · В очереди: ${studioState.snapshot.pending || 0} · Сейчас обрабатывается: ${studioState.job?.state === "running" && studioState.job.current ? 1 : 0} · Ошибок проекта: ${studioState.snapshot.errors || 0}`,
+    `${countLabel(total, "строка", "строки", "строк")} · ${countLabel(studioState.snapshot.files.length, "файл", "файла", "файлов")}`,
   );
-  setText(
-    "errorsButton",
-    "Ошибки этого проекта · " + (studioState.snapshot.errors || 0),
-  );
+  setText("errorsButton", "Ошибки · " + (studioState.snapshot.errors || 0));
   if (studioState.viewMode === "home") {
     setText("fileTitle", p?.name || "Откройте проект");
     setText(
@@ -369,6 +364,7 @@ function updateCloudAvailability() {
     $("provider").value = "local";
     $("provider").dispatchEvent(new Event("change"));
   }
+  studioLifecycle.notify("executionOptionsChanged");
 }
 cloudEnabled.onchange = updateCloudAvailability;
 studioLifecycle.register("settings", "cloudOptIn", () => ({
@@ -454,23 +450,34 @@ function updateTaskActions() {
   );
   const currentSettings = active
     ? JSON.parse(studioState.job.settings || "{}")
-    : settings();
+    : Object.fromEntries(
+        [
+          "model",
+          "cloud_model",
+          "source_language",
+          "target_language",
+          "context_before",
+          "context_after",
+        ].map((id) => [id, $(id)?.value]),
+      );
   const provider = active ? studioState.job.provider : $("provider").value;
   const model =
     provider === "cloud" ? currentSettings.cloud_model : currentSettings.model;
+  activeSettings.dataset.fullDescription =
+    (active ? "Текущая задача: " : "Новый запуск: ") +
+    (model || "модель не выбрана") +
+    " · " +
+    (currentSettings.source_language || "English") +
+    " → " +
+    (currentSettings.target_language || "Russian") +
+    " · соседей: " +
+    (currentSettings.context_before ?? (active ? 4 : 12)) +
+    " до / " +
+    (currentSettings.context_after ?? (active ? 4 : 8)) +
+    " после";
   setText(
     activeSettings,
-    (active ? "Текущая задача: " : "Новый запуск: ") +
-      (model || "модель не выбрана") +
-      " · " +
-      (currentSettings.source_language || "English") +
-      " → " +
-      (currentSettings.target_language || "Russian") +
-      " · соседей: " +
-      (currentSettings.context_before ?? (active ? 4 : 12)) +
-      " до / " +
-      (currentSettings.context_after ?? (active ? 4 : 8)) +
-      " после",
+    `${provider === "cloud" ? "Облако" : provider === "mcp" ? "MCP" : "Локально"} · ${model || "модель не выбрана"}`,
   );
   $("cancel").hidden = !active;
   $("retry").disabled = active || !(studioState.snapshot?.errors || 0);

@@ -15,7 +15,7 @@ def preferences(store, pid):
     return dict(row) if row else dict(DEFAULTS)
 
 
-def save_preferences(store, pid, values):
+def validate_preferences(values):
     result = {}
     for key, maximum in [
         ("max_phrases", 1000000),
@@ -31,6 +31,11 @@ def save_preferences(store, pid, values):
         ):
             raise ValueError("Некорректное ограничение: " + key)
         result[key] = value if key == "max_seconds" else int(value)
+    return result
+
+
+def save_preferences(store, pid, values):
+    result = validate_preferences(values)
     with store.db() as db:
         if not db.execute("SELECT id FROM projects WHERE id=?", (pid,)).fetchone():
             raise ValueError("Проект не найден")

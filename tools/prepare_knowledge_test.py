@@ -17,11 +17,20 @@ from project_knowledge import validate_facts, save_batch
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--installed", action="store_true")
+    parser.add_argument("--probe", choices=["knowledge", "ux"], default="knowledge")
+    parser.add_argument("--auto-close", action="store_true")
+    parser.add_argument("--source", action="store_true")
+    parser.add_argument("--paused", action="store_true")
     args = parser.parse_args()
     fixture = ROOT / "qa-knowledge" / str(time.time_ns())
     fixture.mkdir(parents=True)
     store = Store(fixture / "test.sqlite3")
     pid = store.project(str(fixture))["id"]
+    with store.db() as db:
+        db.execute(
+            "UPDATE projects SET name=? WHERE id=?",
+            ("Aurora — проверка интерфейса", pid),
+        )
     corpus = fixture / "corpus.json"
     corpus.write_text(
         json.dumps(
@@ -41,6 +50,21 @@ def main():
         encoding="utf-8",
     )
     store.import_files(pid, [corpus])
+    if args.paused:
+        jid = store.create_job(
+            pid,
+            "translate",
+            "local",
+            {
+                "model": "qwen3.8:latest",
+                "source_language": "English",
+                "target_language": "Russian",
+                "context": 8192,
+                "run_lines": 200,
+            },
+        )
+        with store.db() as db:
+            db.execute("UPDATE jobs SET state='paused' WHERE id=?", (jid,))
     with store.db() as db:
         rows = [dict(r) for r in db.execute("SELECT * FROM records ORDER BY id")]
     facts = validate_facts(
@@ -84,15 +108,18 @@ def main():
         if args.installed
         else ROOT / "release/LocalizationStudio/LocalizationStudio.exe"
     )
+    executable = (
+        [sys.executable, str(ROOT / "src/desktop.py")] if args.source else [str(exe)]
+    )
     gui = subprocess.Popen(
         [
-            str(exe),
+            *executable,
             "--db",
             str(store.path),
             "--smoke-report",
             str(report),
             "--ui-test-script",
-            str(ROOT / "tools/knowledge_ui_probe.js"),
+            str(ROOT / "tools" / (args.probe + "_ui_probe.js")),
         ]
     )
     try:
@@ -102,7 +129,7 @@ def main():
                 raise RuntimeError("Packaged UI exited before probe")
             time.sleep(0.5)
         result = json.loads(report.read_text(encoding="utf-8"))
-        (ROOT / "reports/knowledge-ui-result.json").write_text(
+        (ROOT / "reports" / (args.probe + "-ui-result.json")).write_text(
             json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8"
         )
         print(json.dumps(result, ensure_ascii=False), flush=True)
@@ -111,7 +138,8 @@ def main():
         print(
             "Visual fixture ready; close this test window after inspection.", flush=True
         )
-        gui.wait(timeout=600)
+        if not args.auto_close:
+            gui.wait(timeout=600)
     finally:
         if gui.poll() is None:
             gui.terminate()

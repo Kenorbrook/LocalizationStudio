@@ -3,7 +3,12 @@ function createRunLimitControls(id, title, hint) {
   section.id = id;
   section.append(element("summary", title));
   const mode = element("select");
-  mode.id = id === "runLimits" ? "limitMode" : "newLimitMode";
+  mode.id =
+    id === "runLimits"
+      ? "limitMode"
+      : id === "newRunLimits"
+        ? "newLimitMode"
+        : id + "Mode";
   mode.setAttribute("aria-label", title);
   for (const [value, label] of [
     ["none", "Без ограничения"],
@@ -15,20 +20,23 @@ function createRunLimitControls(id, title, hint) {
     mode.append(option);
   }
   const value = element("input");
-  value.id = id === "runLimits" ? "limitValue" : "newLimitValue";
+  value.id =
+    id === "runLimits"
+      ? "limitValue"
+      : id === "newRunLimits"
+        ? "newLimitValue"
+        : id + "Value";
   value.type = "number";
   value.min = 1;
   value.value = 200;
   const label = element("label");
   label.htmlFor = value.id;
-  const explanation = element("p", hint, "sub");
+  const explanation = element("p", hint, "sub hint");
   section.append(mode, label, value, explanation);
   function update() {
     label.hidden = value.hidden = mode.value === "none";
     label.textContent =
-      mode.value === "time"
-        ? "Продолжительность, минут (120 = 2 часа)"
-        : "Количество обрабатываемых строк";
+      mode.value === "time" ? "Продолжительность, минут" : "Количество строк";
     value.step = mode.value === "time" ? "0.1" : "1";
   }
   function read(validate = true) {

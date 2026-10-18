@@ -52,6 +52,11 @@ def settings(store, data):
     pid = int(data["project"])
     settings = {**data["settings"], **neighbor_settings(data["settings"])}
     key = data.get("key")
+    preferences = None
+    if "preferences" in data:
+        from process_view import validate_preferences
+
+        preferences = validate_preferences(data["preferences"])
     if not isinstance(settings.get("auto_foreign", True), bool):
         raise ValueError("Некорректная настройка определения языка")
     with store.db() as db:
@@ -64,4 +69,14 @@ def settings(store, data):
         secret(pid, key)
     with store.db() as db:
         db.execute("UPDATE projects SET settings=? WHERE id=?", (dump(settings), pid))
-    return {"ok": True, "key_saved": bool(secret(pid))}
+        if preferences is not None:
+            db.execute(
+                "INSERT OR REPLACE INTO process_preferences VALUES (?,?,?,?)",
+                (
+                    pid,
+                    preferences["max_phrases"],
+                    preferences["max_seconds"],
+                    preferences["page_size"],
+                ),
+            )
+    return {"ok": True, "key_saved": bool(secret(pid)), "preferences": preferences}

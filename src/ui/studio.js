@@ -52,6 +52,10 @@ function setText(target, text) {
   const value = String(text);
   if (node.textContent !== value) node.textContent = value;
 }
+function countLabel(value, one, few, many) {
+  const form = new Intl.PluralRules("ru").select(value);
+  return `${value.toLocaleString("ru-RU")} ${{ one, few, many }[form] || many}`;
+}
 function settings() {
   let s = {};
   for (let id of [
@@ -141,10 +145,7 @@ async function refreshState(initial = false) {
     $("files").parentElement.scrollTop = scroll;
     fileVersion = fv;
   }
-  setText(
-    "errorsButton",
-    "Ошибки этого проекта · " + (studioState.snapshot.errors || 0),
-  );
+  setText("errorsButton", "Ошибки · " + (studioState.snapshot.errors || 0));
   const sv = JSON.stringify(studioState.snapshot.counts);
   if (sv !== statsVersion) {
     if (!$("stats").children.length)
@@ -182,7 +183,7 @@ async function refreshState(initial = false) {
   setText(
     "progressText",
     studioState.job
-      ? `${studioState.job.done} / ${studioState.job.total} · ${studioState.job.stage} · ${studioState.job.error || studioState.job.provider}${studioState.job.rate ? " · " + studioState.job.rate.toFixed(1) + " строк/мин" : ""}${studioState.job.state === "running" && studioState.job.fragment_total ? " · частей " + studioState.job.fragment_done + "/" + studioState.job.fragment_total : ""}`
+      ? `${studioState.job.done.toLocaleString("ru-RU")} / ${studioState.job.total.toLocaleString("ru-RU")} строк${studioState.job.error ? " · " + studioState.job.error : ""}${studioState.job.rate ? " · " + studioState.job.rate.toFixed(1) + " строк/мин" : ""}${studioState.job.state === "running" && studioState.job.fragment_total ? " · частей " + studioState.job.fragment_done + "/" + studioState.job.fragment_total : ""}`
       : "Готово к работе",
   );
   $("pause").disabled = !studioState.job || studioState.job.state !== "running";
@@ -594,12 +595,27 @@ for (let mode of ["pause", "resume", "cancel"])
   });
 $("saveSettings").onclick = guard(async () => {
   if (!studioState.project) throw Error("Сначала откройте проект");
-  await request("settings", {
+  studioLifecycle.notify("validateProjectSettings");
+  const projectSettings = settings();
+  delete projectSettings.run_lines;
+  delete projectSettings.run_minutes;
+  const result = await request("settings", {
     project: studioState.project,
-    settings: settings(),
+    settings: projectSettings,
+    preferences: {
+      max_phrases: +$("historyMaxPhrases").value,
+      max_seconds: +$("historyMaxSeconds").value,
+      page_size: +$("processPageSize").value,
+    },
     key: $("apiKey").value,
   });
   $("apiKey").value = "";
+  studioState.processPrefs = result.preferences;
+  studioState.processOffset = 0;
+  studioLifecycle.notify("projectSettingsSaved");
+  await refresh();
+  if (studioState.viewMode === "queue" && !studioState.dirty.size)
+    await loadRows();
   toast("Настройки сохранены");
 });
 for (const [id, direction] of [

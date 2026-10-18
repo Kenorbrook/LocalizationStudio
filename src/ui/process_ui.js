@@ -41,8 +41,8 @@ historySettings.append(
 );
 processControls.append(historySettings);
 textPane.prepend(processControls);
-const badFolder = element("button", "▣ Брак · 0"),
-  reviewFolder = element("button", "▣ Ручная проверка · 0");
+const badFolder = element("button", "Брак · 0"),
+  reviewFolder = element("button", "Ручная проверка · 0");
 badFolder.id = "badFolder";
 reviewFolder.id = "reviewFolder";
 projectTools.append(badFolder, reviewFolder);
@@ -58,10 +58,10 @@ function updateProcessControls() {
           studioState.viewMode === "queue" &&
           studioState.processTab === "queue"),
     );
-  setText(badFolder, "▣ Брак · " + (studioState.snapshot?.flags?.bad || 0));
+  setText(badFolder, "Брак · " + (studioState.snapshot?.flags?.bad || 0));
   setText(
     reviewFolder,
-    "▣ Ручная проверка · " + (studioState.snapshot?.flags?.review || 0),
+    "Ручная проверка · " + (studioState.snapshot?.flags?.review || 0),
   );
 }
 studioLifecycle.register("navigate", "processControls", updateProcessControls);
@@ -263,12 +263,10 @@ const folderControls = element("div");
 folderControls.id = "folderReviewControls";
 folderControls.hidden = true;
 textPane.prepend(folderControls);
-const folderSettingsOrigin = element("span");
-settingsMenu.before(folderSettingsOrigin);
 const folderReviewHint = element(
   "p",
-  "Повторная редактура всех переведённых строк этой папки, включая уже отредактированные. Пометки сохраняются после редактуры; снимаются вручную или кнопкой «Проверено мной». Модель, контекст, языки и лимиты задаются ниже.",
-  "sub",
+  "Повторная редактура переведённых строк этой папки. Пометки сохраняются до ручного снятия. Используются модель и контекст проекта; лимит берётся из параметров запуска.",
+  "sub hint",
 );
 const folderInstruction = element("textarea");
 folderInstruction.id = "folderReviewInstruction";
@@ -319,21 +317,20 @@ folderBody.lastChild.append(folderRun);
 folderDialog.append(folderHeader, folderBody);
 document.body.append(folderDialog);
 folderControls.append(folderOpen, folderClear);
-let folderSettingsWasOpen = false;
-function restoreFolderSettings() {
-  if (settingsMenu.parentNode !== folderBody) return;
-  folderSettingsOrigin.after(settingsMenu);
-  settingsMenu.open = folderSettingsWasOpen;
-  settingsMenu.hidden = studioState.viewMode === "flags";
-}
-folderDialog.addEventListener("close", restoreFolderSettings);
-folderDialog.addEventListener("cancel", restoreFolderSettings);
+const folderProjectSettings = element("button", "Настройки модели и контекста");
+folderProjectSettings.id = "folderProjectSettings";
+folderProjectSettings.onclick = () =>
+  studioLifecycle.notify("openProjectSettings", { tab: "translation" });
+folderBody.prepend(folderProjectSettings);
+const folderLimits = createRunLimitControls(
+  "folderRunLimits",
+  "Лимит этой редактуры",
+  "Действует только на новую очередь редактуры. После достижения лимита очередь сохранится на паузе; параметры проекта не меняются.",
+);
+folderBody.insertBefore(folderLimits.section, folderBody.lastElementChild);
 folderClose.onclick = () => folderDialog.close();
 folderOpen.onclick = () => {
-  folderSettingsWasOpen = settingsMenu.open;
-  folderBody.insertBefore(settingsMenu, folderReviewHint);
-  settingsMenu.hidden = false;
-  settingsMenu.open = true;
+  folderLimits.load(newRunLimits.read(false));
   setText(
     folderTitle,
     studioState.markKind === "bad"
@@ -351,9 +348,7 @@ function updateFolderControls() {
   $("scope").hidden = visible;
   if (!visible && folderDialog.open) {
     folderDialog.close();
-    restoreFolderSettings();
   }
-  settingsMenu.hidden = visible && !folderDialog.open;
   if (visible) {
     const identity = studioState.project + ":" + studioState.markKind;
     if (identity !== folderIdentity) {
@@ -378,12 +373,16 @@ folderInstruction.oninput = () =>
   );
 folderRun.onclick = guard(async () => {
   if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
-  newRunLimits.read();
+  const limits = folderLimits.read();
   await request("job", {
     project: studioState.project,
     stage: "review",
     provider: $("provider").value,
-    settings: { ...settings(), review_instruction: folderInstruction.value },
+    settings: {
+      ...settings(),
+      ...limits,
+      review_instruction: folderInstruction.value,
+    },
     mark_kind: studioState.markKind,
     allow_manual: folderManual.checked,
   });
@@ -412,7 +411,7 @@ studioLifecycle.register(
   },
 );
 
-const preservedFolder = element("button", "▣ Сохранено без перевода · 0");
+const preservedFolder = element("button", "Оригинал без перевода · 0");
 preservedFolder.id = "preservedFolder";
 projectTools.append(preservedFolder);
 preservedFolder.onclick = guard(async () => {
@@ -427,7 +426,7 @@ studioLifecycle.register(
   async ({ initial, previousProject: oldProject }) => {
     setText(
       preservedFolder,
-      "▣ Сохранено без перевода · " +
+      "Оригинал без перевода · " +
         (studioState.snapshot?.counts?.preserved || 0),
     );
   },
@@ -726,8 +725,8 @@ studioLifecycle.register("refresh", "chainRefresh", async (context) => {
   if (signature === chainVersion) return;
   chainVersion = signature;
   chainPanel.replaceChildren();
-  chainPanel.hidden = !jobs.length;
-  if (!jobs.length) return;
+  chainPanel.hidden = jobs.length < 2;
+  if (jobs.length < 2) return;
   chainPanel.append(element("h2", "Очереди обработки · " + jobs.length));
   jobs.forEach((j, i) => {
     const s = JSON.parse(j.settings || "{}"),
@@ -744,7 +743,7 @@ studioLifecycle.register("refresh", "chainRefresh", async (context) => {
       parameters = element(
         "div",
         `Контекст ${s.context || 8192} · ответ ${s.max_output || 1200} · соседей ${s.context_before ?? 12} до / ${s.context_after ?? 8} после · ${s.source_language || "English"} → ${s.target_language || "Russian"}`,
-        "sub",
+        "sub hint",
       );
     card.append(title, description, parameters);
     chainPanel.append(card);

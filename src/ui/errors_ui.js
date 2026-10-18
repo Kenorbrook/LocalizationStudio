@@ -362,7 +362,7 @@ function showErrorParameters(error) {
   const hint = element(
     "p",
     "Параметры применятся только к новой очереди. Основная задача и настройки проекта сохранятся.",
-    "sub",
+    "sub hint",
   );
   for (const node of [hint, estimate, actions, message])
     node.style.gridColumn = "1 / -1";

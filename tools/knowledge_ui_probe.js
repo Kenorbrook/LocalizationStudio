@@ -14,12 +14,12 @@
     $("provider").value = "cloud";
     $("cloud_model").value = "venice-uncensored-1-2";
     $("provider").dispatchEvent(new Event("change"));
-    check("analysisShowsSelectedModel", $("analyzeKnowledge").textContent.includes("облако: venice-uncensored-1-2"));
+    check("analysisShowsSelectedModel", $("analyzeKnowledge").dataset.modelDescription.includes("venice-uncensored-1-2"));
     check("providerIncludedInSavedSettings", settings().provider === "cloud");
     $("cloud_enabled").checked = false;
     $("cloud_enabled").dispatchEvent(new Event("change"));
     check("cloudOffReturnsLocal", settings().provider === "local" && !settings().cloud_enabled && $("cloud_model").value === "venice-uncensored-1-2");
-    check("cloudOffCanBeSaved", $("saveSettings").parentElement === $("cloudAdvanced"));
+    check("cloudOffCanBeSaved", $("projectSettingsDialog").contains($("saveSettings")));
     const originalJob = studioState.job;
     studioState.job = {id: -1, state: "paused", provider: "cloud"};
     await $("mainAction").onclick();

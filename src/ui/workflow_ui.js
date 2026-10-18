@@ -71,6 +71,7 @@ function updateExecutionChoices() {
     local,
     knownConnections.map((c) => [c.session, c.client, c.model, c.sampling]),
     $("cloud_model").value,
+    cloudEnabled.checked,
     selected,
   ]);
   if (signature !== executionVersion) {
@@ -90,7 +91,7 @@ function updateExecutionChoices() {
         : "Подключить облачную модель через API…",
     );
     api.value = "cloud";
-    external.append(api);
+    if (cloudEnabled.checked) external.append(api);
     for (const c of knownConnections) {
       const option = element(
         "option",
@@ -125,9 +126,14 @@ function updateExecutionChoices() {
 executionModel.onchange = () => {
   const value = executionModel.value;
   if (value === "cloud") {
+    if (!cloudEnabled.checked) {
+      updateExecutionChoices();
+      return;
+    }
     $("provider").value = "cloud";
     if (!$("cloud_model").value) {
-      reviewMenu.open = cloudConnection.open = true;
+      studioLifecycle.notify("openProjectSettings", { tab: "integrations" });
+      cloudConnection.open = true;
       $("endpoint").focus();
     }
   } else if (value.startsWith("mcp:")) {
@@ -140,7 +146,13 @@ executionModel.onchange = () => {
   }
   updateExecutionChoices();
   updateTaskActions();
+  studioLifecycle.notify("settingsDependencies");
 };
+studioLifecycle.register(
+  "executionOptionsChanged",
+  "executionChoices",
+  updateExecutionChoices,
+);
 const mcpProviderOption = element("option", "MCP-клиент");
 mcpProviderOption.value = "mcp";
 $("provider").append(mcpProviderOption);
@@ -162,7 +174,9 @@ loadSettings = function (p) {
   workflowLoadSettings(p);
   const s = JSON.parse(p.settings || "{}");
   newRunLimits.load(s);
-  $("provider").value = s.execution_kind || "local";
+  $("provider").value = s.provider || s.execution_kind || "local";
+  if ($("provider").value === "cloud" && s.cloud_enabled !== true)
+    $("provider").value = "local";
   mcpSessionInput.value = s.mcp_session || "";
   modelHint.value = s.mcp_model_hint || "";
   updateExecutionChoices();
@@ -200,7 +214,7 @@ studioLifecycle.register(
       progress.fraction === null ||
       !studioState.job.run_started;
     runLimitProgress.value = Math.min(1, Math.max(0, progress.fraction || 0));
-    runLimitText.hidden = !studioState.job;
+    runLimitText.hidden = !studioState.job || !studioState.job.run_started;
   },
 );
 // Only the body scrolls; title and close controls stay visible in every info dialog.
@@ -271,7 +285,7 @@ async function showRecordContext(id, radius = 10) {
     element(
       "p",
       "Порядок: предыдущие строки → выбранная фраза → последующие строки. Это порядок записей того же файла и блока, не обязательно порядок прохождения игры. Последующие фразы тоже могут пояснять смысл; для меню это соседние пункты.",
-      "sub",
+      "sub hint",
     ),
   );
   const ordered = [...data.rows].sort((a, b) => a.position - b.position),

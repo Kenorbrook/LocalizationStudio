@@ -99,11 +99,7 @@ setInterval(async () => {
   }
 }, 2500);
 // Text can be supplied without creating a file outside the application first.
-const textLabel = element(
-  "p",
-  "Или вставить отдельный текст (каждая непустая строка — новая запись):",
-  "sub",
-);
+const textLabel = element("p", "Вставить текст", "sub");
 const extraText = element("textarea");
 extraText.id = "extraText";
 extraText.placeholder = "Вставьте недостающий оригинальный текст";
