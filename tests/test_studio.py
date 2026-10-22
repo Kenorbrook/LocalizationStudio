@@ -35,7 +35,7 @@ class StudioTests(unittest.TestCase):
         with self.store.db() as db:
             return db.execute("SELECT id FROM files").fetchone()[0]
 
-    def test_worker_launch_through_visible_translation_runner(self):
+    def test_worker_launch_without_console_and_tracks_actual_pid(self):
         self.corpus([{"source": "Hello"}])
         jid = self.store.create_job(self.project, "translate", "local", {})
         with (
@@ -47,12 +47,12 @@ class StudioTests(unittest.TestCase):
         with self.store.db() as db:
             self.assertEqual(
                 db.execute("SELECT pid FROM jobs WHERE id=?", (jid,)).fetchone()[0],
-                None,
+                1234,
             )
         args = popen.call_args.args[0]
-        self.assertIn("-StudioJob", args)
-        self.assertIn("powershell.exe", args)
-        self.assertIn("-StudioPython", args)
+        self.assertIn("--worker", args)
+        self.assertNotIn("powershell.exe", args)
+        self.assertTrue(args[1].endswith("app.py"))
         self.assertEqual(popen.call_args.kwargs["creationflags"], 0x08000000)
         self.assertEqual(popen.call_args.kwargs["stdin"], -3)
 

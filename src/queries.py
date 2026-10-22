@@ -85,6 +85,9 @@ def job_log(store, jid):
 
 
 def state(store, project, editing=False):
+    from worker_supervision import recover_workers
+
+    recover_workers(store)
     if project:
         from job_chain import schedule
 

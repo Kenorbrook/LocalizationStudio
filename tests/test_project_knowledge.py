@@ -362,7 +362,7 @@ class KnowledgeTests(unittest.TestCase):
                     self.assertNotIn("venice_parameters", payload)
                     self.assertEqual(payload["max_tokens"], 2400)
 
-    def test_analysis_launcher_uses_visible_powershell_runner(self):
+    def test_analysis_launcher_uses_direct_background_worker(self):
         from job_runtime import launch
 
         jid = self.store.create_job(self.pid, "analyze", "local", self.settings)
@@ -373,17 +373,19 @@ class KnowledgeTests(unittest.TestCase):
             popen.return_value.pid = 1234
             launch(self.store, jid)
         args = popen.call_args.args[0]
-        self.assertIn("powershell.exe", args)
-        self.assertIn("-StudioJob", args)
-        self.assertIn("-StudioPython", args)
-        self.assertEqual(args[args.index("-ExecutionPolicy") + 1], "Bypass")
+        self.assertNotIn("powershell.exe", args)
+        self.assertIn("--worker", args)
+        self.assertEqual(args[args.index("--worker") + 1], str(jid))
+        self.assertEqual(popen.call_args.kwargs["creationflags"], 0x08000000)
 
     def test_failed_launcher_preserves_queue_and_pauses(self):
-        from job_runtime import _watch_start
+        from worker_supervision import watch_worker
         from unittest.mock import Mock
 
         jid = self.store.create_job(self.pid, "analyze", "local", self.settings)
-        _watch_start(self.store, jid, Mock(**{"wait.return_value": 1}))
+        with self.store.db() as db:
+            db.execute("UPDATE jobs SET pid=1234,worker_active=1 WHERE id=?", (jid,))
+        watch_worker(self.store, jid, Mock(pid=1234, **{"wait.return_value": 1}))
         with self.store.db() as db:
             job = db.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
             self.assertEqual((job["state"], job["worker_active"]), ("paused", 0))
@@ -399,32 +401,57 @@ class KnowledgeTests(unittest.TestCase):
 
     def test_launch_timeout_does_not_pause_claimed_worker(self):
         import subprocess
-        from job_runtime import _watch_start
+        from worker_supervision import watch_worker
         from unittest.mock import Mock
 
         jid = self.store.create_job(self.pid, "analyze", "local", self.settings)
-        process = Mock(**{"wait.side_effect": subprocess.TimeoutExpired("test", 45)})
+        process = Mock(
+            pid=1234, **{"wait.side_effect": [subprocess.TimeoutExpired("test", 45), 0]}
+        )
         with self.store.db() as db:
             db.execute(
-                "UPDATE jobs SET state='running',worker_active=1 WHERE id=?", (jid,)
+                "UPDATE jobs SET state='running',worker_active=1,pid=1234 WHERE id=?",
+                (jid,),
             )
-        _watch_start(self.store, jid, process)
+
+        def finish(**kwargs):
+            if kwargs:
+                raise subprocess.TimeoutExpired("test", 45)
+            with self.store.db() as db:
+                self.assertEqual(
+                    db.execute("SELECT state FROM jobs WHERE id=?", (jid,)).fetchone()[
+                        0
+                    ],
+                    "running",
+                )
+                db.execute(
+                    "UPDATE jobs SET state='done',worker_active=0 WHERE id=?", (jid,)
+                )
+            return 0
+
+        process.wait.side_effect = finish
+        watch_worker(self.store, jid, process)
         with self.store.db() as db:
             self.assertEqual(
                 db.execute("SELECT state FROM jobs WHERE id=?", (jid,)).fetchone()[0],
-                "running",
+                "done",
             )
 
     def test_unclaimed_launcher_timeout_pauses(self):
         import subprocess
-        from job_runtime import _watch_start
+        from worker_supervision import watch_worker
         from unittest.mock import Mock
 
         jid = self.store.create_job(self.pid, "analyze", "local", self.settings)
-        _watch_start(
+        with self.store.db() as db:
+            db.execute("UPDATE jobs SET pid=1234,worker_active=1 WHERE id=?", (jid,))
+        watch_worker(
             self.store,
             jid,
-            Mock(**{"wait.side_effect": subprocess.TimeoutExpired("test", 45)}),
+            Mock(
+                pid=1234,
+                **{"wait.side_effect": [subprocess.TimeoutExpired("test", 45), 1]},
+            ),
         )
         with self.store.db() as db:
             self.assertEqual(

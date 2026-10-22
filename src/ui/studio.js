@@ -209,6 +209,8 @@ async function refreshState(initial = false) {
           partial,
           studioState.job?.fragment_done,
           studioState.job?.fragment_total,
+          studioState.job?.state,
+          studioState.job?.worker_active,
         ]
       : null,
   );
@@ -228,7 +230,10 @@ async function refreshState(initial = false) {
                 " · ПРЕДВАРИТЕЛЬНЫЙ РЕЗУЛЬТАТ (КОНЕЦ ТЕКСТА)"
             : "ПЕРЕВОД",
         ),
-        element("div", partial || r.text || "Модель работает…"),
+        element(
+          "div",
+          partial || r.text || pendingTranslationText(studioState.job),
+        ),
       );
     else
       $("live").replaceChildren(
@@ -252,6 +257,18 @@ async function refreshState(initial = false) {
   updateProjectScreen();
   if (!studioState.dirty.size && studioState.file && !initial)
     await loadRows(true);
+}
+function pendingTranslationText(job) {
+  if (job?.worker_active && ["paused", "cancelled"].includes(job.state))
+    return "Завершаем текущий запрос…";
+  return (
+    {
+      queued: "Запускаем обработчик…",
+      running: "Модель работает…",
+      paused: "Перевод на паузе. Результат этой строки ещё не сохранён.",
+      cancelled: "Задача отменена. Результат этой строки ещё не сохранён.",
+    }[job?.state] || "Результат этой строки ещё не сохранён."
+  );
 }
 function currentRecordPage() {
   if (["home", "errors"].includes(studioState.viewMode)) return null;

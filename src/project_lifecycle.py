@@ -14,7 +14,12 @@ def matches_worker(info, store, jid):
         and exe.suffix.lower() == ".exe"
     )
     source = (
-        exe == Path(sys.executable) and str(ROOT / "app.py").lower() in command.lower()
+        exe
+        in {
+            Path(sys.executable),
+            Path(getattr(sys, "_base_executable", sys.executable)),
+        }
+        and str(ROOT / "app.py").lower() in command.lower()
     )
     if not (packaged or source) or not re.search(
         r"--worker\s+" + str(int(jid)) + r"(?:\s|$)", command

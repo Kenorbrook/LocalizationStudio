@@ -1,6 +1,6 @@
 """Loopback HTTP transport: authentication, resources and request handling."""
 
-import json, secrets, time, webbrowser
+import json, secrets, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 from core import UI_ROOT, dump
@@ -103,15 +103,9 @@ def serve(store, port, open_browser, ready=None, inspection=None):
             except Exception as e:
                 self.respond({"error": str(e)}, 400)
 
-    # Workers survive closing the app; recover abandoned queue on restart.
-    with store.db() as db:
-        db.execute(
-            "UPDATE jobs SET state='paused',error='Обработчик завершился; продолжите задачу' WHERE state IN ('running','queued') AND heartbeat<?",
-            (time.time() - 60,),
-        )
-        db.execute(
-            "UPDATE jobs SET worker_active=0 WHERE heartbeat<?", (time.time() - 60,)
-        )
+    from worker_supervision import recover_workers
+
+    recover_workers(store)
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     port = server.server_port
     url = f"http://127.0.0.1:{port}/"

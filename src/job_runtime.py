@@ -1,8 +1,8 @@
 """Job settings validation and worker process launch."""
 
-import json, math, subprocess, sys, time, threading
+import json, math, subprocess, sys, time, threading, uuid
 from pathlib import Path
-from core import APP_HOME, ROOT, SHARED
+from core import APP_HOME, ROOT
 from providers import secret
 
 
@@ -45,37 +45,19 @@ def _launch(store, jid):
         args = [sys.executable, str(ROOT / "app.py")]
     with store.db() as db:
         job = db.execute(
-            "SELECT j.stage,p.root FROM jobs j JOIN projects p ON p.id=j.project WHERE j.id=?",
+            "SELECT state FROM jobs WHERE id=?",
             (jid,),
         ).fetchone()
-    if job["stage"] == "analyze" or job["stage"] in {"translate", "review", "cloud"}:
-        worker_args = (
-            ["-StudioWorkerExecutable", args[0]]
-            if getattr(sys, "frozen", False)
-            else ["-StudioPython", sys.executable, "-StudioApp", str(ROOT / "app.py")]
-        )
-        args = [
-            "powershell.exe",
-            "-NoProfile",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(SHARED / "run_translation.ps1"),
-            "-GameRoot",
-            job["root"],
-            "-StudioJob",
-            str(jid),
-            "-StudioDb",
-            str(store.path),
-            *worker_args,
-        ]
-    else:
-        args += ["--worker", str(jid), "--db", str(store.path)]
+    if not job or job["state"] != "queued":
+        raise ValueError("Запустить можно только задачу в очереди")
+    args += ["--worker", str(jid), "--db", str(store.path)]
     folder = store.path.parent / "worker-logs"
     folder.mkdir(parents=True, exist_ok=True)
+    launch_token = uuid.uuid4().hex
     with store.db() as db:
         db.execute(
-            "UPDATE jobs SET worker_active=1,heartbeat=? WHERE id=?", (time.time(), jid)
+            "UPDATE jobs SET worker_active=1,pid=NULL,heartbeat=?,worker_launch=? WHERE id=?",
+            (time.time(), launch_token, jid),
         )
     try:
         with (folder / f"job-{jid}-process.log").open("ab") as output:
@@ -88,43 +70,21 @@ def _launch(store, jid):
             )
     except Exception:
         with store.db() as db:
-            db.execute("UPDATE jobs SET worker_active=0 WHERE id=?", (jid,))
-        raise
-    if job["stage"] not in {"analyze", "translate", "review", "cloud"}:
-        with store.db() as db:
             db.execute(
-                "UPDATE jobs SET pid=? WHERE id=? AND state='queued'",
-                (process.pid, jid),
+                "UPDATE jobs SET worker_active=0 WHERE id=? AND worker_launch=?",
+                (jid, launch_token),
             )
-    threading.Thread(
-        target=_watch_start, args=(store, jid, process), daemon=True
-    ).start()
-
-
-def _watch_start(store, jid, process):
-    deadline = time.monotonic() + 45
-    try:
-        code = process.wait(timeout=45)
-        while code == 0 and time.monotonic() < deadline:
-            with store.db() as db:
-                row = db.execute("SELECT state FROM jobs WHERE id=?", (jid,)).fetchone()
-            if not row or row[0] != "queued":
-                return
-            time.sleep(0.25)
-        error = (
-            f"Не удалось запустить обработчик (код {code}). Подробности в журнале запуска; очередь сохранена"
-            if code != 0
-            else "Обработчик не подтвердил запуск за 45 секунд; очередь сохранена"
-        )
-    except subprocess.TimeoutExpired:
-        error = "Обработчик не подтвердил запуск за 45 секунд; очередь сохранена"
-    except Exception:
-        return
+        raise
     with store.db() as db:
         db.execute(
-            "UPDATE jobs SET state='paused',worker_active=0,error=? WHERE id=? AND state='queued'",
-            (error, jid),
+            "UPDATE jobs SET pid=? WHERE id=? AND pid IS NULL AND worker_launch=?",
+            (process.pid, jid, launch_token),
         )
+    from worker_supervision import watch_worker
+
+    threading.Thread(
+        target=watch_worker, args=(store, jid, process, launch_token), daemon=True
+    ).start()
 
 
 def validate_job_settings(store, pid, provider, settings, old):

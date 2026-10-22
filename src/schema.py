@@ -74,6 +74,7 @@ def initialize(db):
         ("run_started", "REAL DEFAULT 0"),
         ("run_elapsed", "REAL DEFAULT 0"),
         ("run_done", "INTEGER DEFAULT 0"),
+        ("worker_launch", "TEXT DEFAULT ''"),
     ]:
         if name not in job_columns:
             db.execute(f"ALTER TABLE jobs ADD COLUMN {name} {definition}")

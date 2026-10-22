@@ -116,6 +116,9 @@ def job(store, data):
 
 
 def control(store, data):
+    from worker_supervision import recover_workers
+
+    recover_workers(store)
     jid = int(data["id"])
     mode = data["mode"]
     with store.db() as db:
@@ -130,7 +133,7 @@ def control(store, data):
                 (job["project"], jid),
             ).fetchone():
                 raise ValueError("Сначала завершите текущую задачу проекта")
-            if time.time() - job["heartbeat"] < 10:
+            if job["worker_active"]:
                 raise ValueError(
                     "Дождитесь завершения текущего запроса перед продолжением"
                 )
