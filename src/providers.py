@@ -15,6 +15,32 @@ class ServiceUnavailable(Exception):
     pass
 
 
+class LocalInferenceError(RuntimeError):
+    """One local inference request failed; keep the record for a manual retry."""
+
+
+def local_inference_error(details, status=None):
+    details = str(details).lower()
+    suffix = f" (HTTP {status})" if status else ""
+    memory = any(
+        term in details
+        for term in (
+            "out of memory",
+            "bad_alloc",
+            "failed to allocate",
+            "unable to allocate",
+        )
+    )
+    reason = (
+        "не хватило оперативной памяти или видеопамяти"
+        if memory
+        else "не удалось выполнить запрос"
+    )
+    return LocalInferenceError(
+        f"Локальная модель{suffix}: {reason}. Повторите строку через раздел «Ошибки» с другими параметрами контекста и ответа."
+    )
+
+
 class Credential(ctypes.Structure):
     _fields_ = [
         ("Flags", wintypes.DWORD),
@@ -84,6 +110,22 @@ def json_request(url, data=None, headers=None, local=False):
         ) as r:
             return json.load(r)
     except urllib.error.HTTPError as e:
+        if (
+            local
+            and data is not None
+            and urlparse(url).path == "/api/chat"
+            and e.code == 500
+        ):
+            # Only classify a bounded local error; never echo provider response bodies.
+            try:
+                payload = json.loads(e.read(8192).decode("utf-8", errors="replace"))
+                details = payload.get("error", "") if isinstance(payload, dict) else ""
+            except (ValueError, OSError):
+                details = ""
+            finally:
+                e.close()
+            raise local_inference_error(details, e.code) from None
+        e.close()
         if e.code in {429, 500, 502, 503, 504}:
             raise ServiceUnavailable(
                 f"Провайдер временно недоступен: HTTP {e.code}"
@@ -232,6 +274,8 @@ class Provider:
                 },
                 local=True,
             )
+            if result.get("error"):
+                raise local_inference_error(result["error"])
             text = result["message"]["content"]
             if result.get("done_reason") in {"length", "max_tokens", "maxTokens"}:
                 raise OutputTruncated("Модель достигла лимита ответа")

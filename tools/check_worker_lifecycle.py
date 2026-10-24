@@ -97,7 +97,7 @@ def main():
             ).fetchone()
         return dict(row) if row else None
 
-    def respond(row):
+    def respond(row, malformed=False):
         items = json.loads(
             json.loads(row["request"])["messages"][0]["content"]["text"]
         )["items"]
@@ -115,6 +115,8 @@ def main():
                 "text": json.dumps({"items": translations}, ensure_ascii=False),
             },
         }
+        if malformed:
+            response["content"]["text"] = '{"error":"neutral failed inference fixture"}'
         with store.db() as db:
             db.execute(
                 "UPDATE mcp_requests SET state='done',response=? WHERE id=? AND state='pending'",
@@ -136,6 +138,10 @@ def main():
     try:
 
         def ready():
+            if gui.poll() is not None:
+                raise RuntimeError(
+                    f"Fixture GUI exited before it was ready (code {gui.returncode})"
+                )
             try:
                 return json.loads(probe.read_text()).get("passed")
             except (OSError, ValueError):
@@ -259,6 +265,47 @@ def main():
                 == 2
             )
         checks["resume_did_not_activate_fixture"] = fixture_is_not_foreground()
+        # A record failure must remain reviewable while the following record still runs.
+        extra = fixture / "errors.json"
+        extra.write_text(
+            json.dumps([{"source": "Broken request."}, {"source": "Goodbye."}])
+        )
+        store.import_files(project, [extra])
+        jid = api(
+            "job",
+            {
+                "project": project,
+                "stage": "translate",
+                "provider": "mcp",
+                "settings": settings,
+            },
+        )["job"]
+        for _ in range(2):
+            respond(until(sampling), malformed=True)
+        respond(until(sampling))
+        until(lambda: job()["state"] == "incomplete" and not job()["worker_active"])
+        with store.db() as db:
+            rows = [
+                tuple(row)
+                for row in db.execute(
+                    "SELECT status,text FROM records WHERE file=(SELECT id FROM files WHERE path=?) ORDER BY position",
+                    (str(extra),),
+                )
+            ]
+            checks["failed_record_does_not_stop_following_record"] = rows == [
+                ("empty", ""),
+                ("translated", "До свидания."),
+            ]
+            checks["failed_record_is_reviewable"] = (
+                db.execute(
+                    "SELECT count(*) FROM errors WHERE job=? AND resolved=0 AND budget_json<>'{}'",
+                    (jid,),
+                ).fetchone()[0]
+                == 1
+            )
+        checks["incomplete_is_not_claimed_as_done"] = (
+            job()["done"] == 2 and job()["error"] == "1 строк требуют внимания"
+        )
         result = {
             "passed": all(checks.values()),
             "checks": checks,
