@@ -463,7 +463,12 @@ studioLifecycle.register("render", "literalRender", (data, quiet = false) => {
       translate.title =
         "Добавить в конец очереди, обработать следующей или перевести вручную";
       translate.onclick = guard(() => showPreservedTranslation(row));
-      actions.replaceChildren(translate, contextButton);
+      const clearMark = [...actions.querySelectorAll("button")].find(
+        (button) => button.textContent === "Снять пометку",
+      );
+      actions.replaceChildren(
+        ...[translate, contextButton, clearMark].filter(Boolean),
+      );
     } else if (!humanVerified(row)) {
       const menu = element("details");
       menu.dataset.preserveMenu = row.id;

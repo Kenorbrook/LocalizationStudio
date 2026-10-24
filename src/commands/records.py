@@ -89,7 +89,11 @@ def preserved_check(store, data):
 
 def preserve(store, data):
     return store.preserve(
-        int(data["id"]), int(data["revision"]), data["kind"], data["reason"]
+        int(data["id"]),
+        int(data["revision"]),
+        data["kind"],
+        data["reason"],
+        confirmed=True,
     )
 
 

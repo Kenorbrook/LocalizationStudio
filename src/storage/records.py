@@ -25,7 +25,9 @@ class RecordsRepository:
             )
             return result
 
-    def preserve(self, rid, revision, kind, reason, worker_job=None):
+    def preserve(
+        self, rid, revision, kind, reason, worker_job=None, *, confirmed=False
+    ):
         if (
             kind not in {"symbols", "foreign"}
             or not isinstance(reason, str)
@@ -69,10 +71,15 @@ class RecordsRepository:
                     time.time(),
                 ),
             )
+            reviewer = "human:preserve" if confirmed else "literal"
             db.execute(
-                "UPDATE records SET text=source,status='preserved',revision=revision+1,reviewer='literal' WHERE id=?",
-                (rid,),
+                "UPDATE records SET text=source,status='preserved',revision=revision+1,reviewer=? WHERE id=?",
+                (reviewer, rid),
             )
+            if confirmed:
+                db.execute(
+                    "DELETE FROM record_marks WHERE record=? AND kind='review'", (rid,)
+                )
             db.execute(
                 "INSERT INTO history(record,revision,text,status,reviewer,reason,at) VALUES (?,?,?,?,?,?,?)",
                 (
@@ -80,7 +87,7 @@ class RecordsRepository:
                     revision + 1,
                     r["source"],
                     "preserved",
-                    "literal",
+                    reviewer,
                     reason.strip(),
                     now(),
                 ),

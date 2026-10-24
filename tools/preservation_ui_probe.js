@@ -8,6 +8,10 @@
   try {
     for (let i = 0; i < 150 && !studioState.project; i++) await sleep(40);
     await refresh();
+    const old = await request("current?id=3");
+    const later = await request("current?id=4");
+    check("oldAutomaticTagRepairedOnOpening", old.status === "preserved" && old.flag === "" && old.preserve_reason === "Другой язык");
+    check("laterReviewKeptOnOpening", later.flag === "review");
     await $("reviewFolder").onclick();
     const menu = document.querySelector("[data-preserve-menu]");
     check("manualReviewHasReason", !!menu);
@@ -42,9 +46,17 @@
     await replacement.querySelector("[data-preserve-submit]").onclick();
     const saved = await request("current?id=" + rowId);
     check("submitPersistsReasonAndOriginal", saved.preserve_kind === "foreign" && saved.preserve_reason === draft && saved.text === saved.source);
+    check("confirmedPreservationClearsReviewTag", saved.flag === "");
+    const marked = await request("marked?project=" + studioState.project + "&kind=review");
+    check("confirmedRowLeavesReviewFolder", !marked.rows.some(row => row.id === rowId) && !document.querySelector(`.record[data-id="${rowId}"]`));
     check("savedDraftCleared", !preservationDrafts.has(`${studioState.project}/${rowId}`));
     check("confirmationVisible", $("toast").textContent === "Оригинал сохранён без перевода");
     check("refreshRemainsHealthy", !$("connection").textContent.includes("Сервер недоступен"));
+    const laterCard = document.querySelector('.record[data-id="4"]');
+    const clear = [...laterCard.querySelectorAll("button")].find(button => button.textContent === "Снять пометку");
+    check("preservedRowsAllowExplicitTagRemoval", !!clear);
+    await clear.onclick();
+    check("explicitRemovalClearsLaterReview", (await request("current?id=4")).flag === "" && !document.querySelector('.record[data-id="4"]'));
     showView("text");
     await loadRows();
     const nextMenu = document.querySelector("[data-preserve-menu]");

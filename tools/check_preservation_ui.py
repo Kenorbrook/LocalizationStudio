@@ -31,6 +31,8 @@ def main():
             [
                 {"source": "Keep this original sentence for an authorial effect."},
                 {"source": "This other sentence can still be translated."},
+                {"source": "An older original was already kept by the user."},
+                {"source": "A later review must remain until explicitly removed."},
             ]
         )
     )
@@ -38,6 +40,15 @@ def main():
     with store.db() as db:
         first = db.execute("SELECT id,revision FROM records ORDER BY id").fetchone()
     store.mark(first["id"], first["revision"], "review")
+    for rid in [3, 4]:
+        row = store.mark(rid, 0, "review", origin="language")
+        row = store.preserve(rid, row["revision"], "foreign", "Другой язык")
+        if rid == 4:
+            store.mark(rid, row["revision"], "review", origin="language")
+    with store.db() as db:
+        db.execute(
+            "DELETE FROM schema_versions WHERE name='preserved-language-review-marks-v1'"
+        )
     report = fixture / "probe.json"
     command = (
         [sys.executable, str(ROOT / "src/desktop.py")]
@@ -91,7 +102,9 @@ def main():
             try:
                 shutil.rmtree(fixture)
                 break
-            except PermissionError:
+            except (PermissionError, FileNotFoundError):
+                if not fixture.exists():
+                    break
                 if attempt == 79:
                     raise
                 time.sleep(0.25)

@@ -150,3 +150,19 @@ def initialize(db):
         db.execute(
             "INSERT OR IGNORE INTO schema_versions VALUES ('human-verification-marks-v1')"
         )
+
+    if not db.execute(
+        "SELECT 1 FROM schema_versions WHERE name='preserved-language-review-marks-v1'"
+    ).fetchone():
+        # Only stale automatic language marks can be repaired without a new decision.
+        rows = db.execute(
+            "SELECT r.id FROM records r JOIN preserved_records p ON p.record=r.id JOIN record_marks m ON m.record=r.id WHERE r.status='preserved' AND m.kind='review' AND m.origin='language' AND m.protected_revision<=(SELECT max(h.revision) FROM history h WHERE h.record=r.id AND h.status='preserved' AND h.reviewer IN ('literal','human:preserve'))"
+        ).fetchall()
+        for row in rows:
+            db.execute("DELETE FROM record_marks WHERE record=?", (row["id"],))
+            db.execute(
+                "UPDATE records SET revision=revision+1 WHERE id=?", (row["id"],)
+            )
+        db.execute(
+            "INSERT OR IGNORE INTO schema_versions VALUES ('preserved-language-review-marks-v1')"
+        )

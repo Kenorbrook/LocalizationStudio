@@ -3,7 +3,8 @@ from pathlib import Path
 from unittest.mock import patch
 from core import Store
 from preservation import symbolic, folder
-from app import records
+from app import records, api
+from process_view import marks_page
 
 
 class PreservationTests(unittest.TestCase):
@@ -65,7 +66,9 @@ class PreservationTests(unittest.TestCase):
             records(self.store, rows[1]["file"])["rows"][1]["preserve_kind"], "foreign"
         )
 
-    def test_preserve_existing_translation_restores_without_losing_flags(self):
+    def test_automatic_preservation_restores_translation_without_clearing_human_flag(
+        self,
+    ):
         row = self.corpus([{"source": "Carpe diem.", "translation": "Лови момент."}])[0]
         mark = self.store.mark(row["id"], 0, "review")
         preserved = self.store.preserve(
@@ -186,6 +189,113 @@ class PreservationTests(unittest.TestCase):
         pid = self.store.project(str(other))["id"]
         with self.assertRaises(ValueError):
             api(self.store, "preserved-check", {"project": pid, "record": row["id"]})
+
+    def test_user_preservation_resolves_review_and_keeps_original_reason(self):
+        rows = self.corpus([{"source": "Carpe diem."}, {"source": "Hello."}])
+        jid = self.store.create_job(self.pid, "translate", "local", {})
+        for origin in ["human", "language"]:
+            row = self.store.record(rows[0]["id"])
+            row = self.store.mark(row["id"], row["revision"], "review", origin=origin)
+            saved = api(
+                self.store,
+                "preserve",
+                {
+                    "id": row["id"],
+                    "revision": row["revision"],
+                    "kind": "foreign",
+                    "reason": "Авторский приём",
+                },
+            )
+            self.assertEqual(
+                (saved["status"], saved["text"], saved["flag"]),
+                ("preserved", "Carpe diem.", ""),
+            )
+            self.assertEqual(saved["preserve_reason"], "Авторский приём")
+            self.assertEqual(saved["reviewer"], "human:preserve")
+            self.assertEqual(marks_page(self.store, self.pid, "review")["total"], 0)
+            self.assertEqual(folder(self.store, self.pid)["total"], 1)
+        with self.store.db() as db:
+            self.assertEqual(
+                db.execute("SELECT done FROM jobs WHERE id=?", (jid,)).fetchone()[0], 1
+            )
+            self.assertEqual(
+                db.execute(
+                    "SELECT state FROM queue WHERE record=?", (rows[1]["id"],)
+                ).fetchone()[0],
+                "pending",
+            )
+
+    def test_user_preservation_does_not_clear_bad_or_unrelated_review(self):
+        rows = self.corpus([{"source": "Carpe diem."}, {"source": "Hello."}])
+        first = self.store.mark(rows[0]["id"], 0, "bad")
+        second = self.store.mark(rows[1]["id"], 0, "review")
+        api(
+            self.store,
+            "preserve",
+            {
+                "id": first["id"],
+                "revision": first["revision"],
+                "kind": "foreign",
+                "reason": "Другой язык",
+            },
+        )
+        self.assertEqual(self.store.record(first["id"])["flag"], "bad")
+        self.assertEqual(self.store.record(second["id"])["flag"], "review")
+
+    def test_stale_or_failed_user_preservation_does_not_clear_review(self):
+        first = self.corpus([{"source": "Carpe diem."}])[0]
+        marked = self.store.mark(first["id"], 0, "review")
+        for revision, reason in [(0, "Другой язык"), (marked["revision"], "")]:
+            with self.assertRaises(ValueError):
+                api(
+                    self.store,
+                    "preserve",
+                    {
+                        "id": first["id"],
+                        "revision": revision,
+                        "kind": "foreign",
+                        "reason": reason,
+                    },
+                )
+            self.assertEqual(self.store.record(first["id"])["flag"], "review")
+            self.assertEqual(self.store.record(first["id"])["status"], "empty")
+
+    def test_migration_repairs_only_old_language_marks_and_preserves_new_decisions(
+        self,
+    ):
+        rows = self.corpus([{"source": "Carpe diem."} for _ in range(5)])
+        for index, row in enumerate(rows[:4]):
+            row = self.store.mark(
+                row["id"],
+                0,
+                "bad" if index == 3 else "review",
+                origin="human" if index == 2 else "language",
+            )
+            preserved = self.store.preserve(
+                row["id"], row["revision"], "foreign", "Другой язык"
+            )
+            if index == 1:
+                self.store.mark(
+                    row["id"], preserved["revision"], "review", origin="language"
+                )
+        self.store.mark(rows[4]["id"], 0, "review", origin="language")
+        before = self.store.record(rows[0]["id"])
+        with self.store.db() as db:
+            db.execute(
+                "DELETE FROM schema_versions WHERE name='preserved-language-review-marks-v1'"
+            )
+        reopened = Store(self.store.path)
+        after = reopened.record(rows[0]["id"])
+        self.assertEqual(after["flag"], "")
+        for key in ["source", "text", "status", "preserve_reason"]:
+            self.assertEqual(after[key], before[key])
+        self.assertEqual(
+            [reopened.record(row["id"])["flag"] for row in rows[1:]],
+            ["review", "review", "bad", "review"],
+        )
+        # A new explicit review after repair survives another opening.
+        later = reopened.mark(after["id"], after["revision"], "review")
+        self.assertEqual(Store(self.store.path).record(later["id"])["flag"], "review")
 
 
 if __name__ == "__main__":

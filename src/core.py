@@ -61,8 +61,12 @@ class Store:
     def record(self, rid):
         return self.records.record(rid)
 
-    def preserve(self, rid, revision, kind, reason, worker_job=None):
-        return self.records.preserve(rid, revision, kind, reason, worker_job)
+    def preserve(
+        self, rid, revision, kind, reason, worker_job=None, *, confirmed=False
+    ):
+        return self.records.preserve(
+            rid, revision, kind, reason, worker_job, confirmed=confirmed
+        )
 
     def restore_preserved(self, rid, revision):
         return self.records.restore_preserved(rid, revision)
