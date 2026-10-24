@@ -67,24 +67,37 @@ def latest(current=VERSION, opener=open_remote):
             raise ValueError("Недопустимый размер сборки")
         checksum = release_asset(release, "SHA256SUMS.txt")
         result.update(asset=asset, checksum=checksum)
+        if any(
+            item.get("name") == "update-files.json"
+            for item in release.get("assets", [])
+        ):
+            result["incremental"] = {
+                "manifest": release_asset(release, "update-files.json"),
+                "release": release,
+            }
     return result
+
+
+def checksum_for(release, name, opener=open_remote):
+    with opener(release["checksum"]["browser_download_url"]) as response:
+        checksums = response.read(64001)
+    if len(checksums) > 64000:
+        raise ValueError("Файл контрольных сумм слишком большой")
+    matches = []
+    for line in checksums.decode("utf-8-sig").splitlines():
+        match = re.fullmatch(r"([0-9a-fA-F]{64})\s+\*?(.+)", line.strip())
+        if match and match[2] == name:
+            matches.append(match[1].lower())
+    if len(matches) != 1:
+        raise ValueError("Для сборки нет однозначной контрольной суммы SHA-256")
+    return matches[0]
 
 
 def download(
     release, destination, progress=lambda done, total: None, opener=open_remote
 ):
     asset = release["asset"]
-    with opener(release["checksum"]["browser_download_url"]) as response:
-        checksums = response.read(64001)
-    if len(checksums) > 64000:
-        raise ValueError("Файл контрольных сумм слишком большой")
-    expected = None
-    for line in checksums.decode("utf-8-sig").splitlines():
-        match = re.fullmatch(r"([0-9a-fA-F]{64})\s+\*?(.+)", line.strip())
-        if match and match[2] == asset["name"]:
-            expected = match[1].lower()
-    if not expected:
-        raise ValueError("Для сборки нет контрольной суммы SHA-256")
+    expected = checksum_for(release, asset["name"], opener)
     destination = Path(destination)
     temporary = destination.with_suffix(".partial")
     digest = hashlib.sha256()

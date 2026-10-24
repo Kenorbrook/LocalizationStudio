@@ -90,6 +90,10 @@ for (const [key, title] of [
 updatesBody
   .querySelector("h3")
   .after(updateMessage, updateProgress, actions, releaseNotes);
+const updateTransfer = element("p", undefined, "sub");
+updateTransfer.id = "updateTransfer";
+updateTransfer.hidden = true;
+updateProgress.after(updateTransfer);
 const updateSource = element(
   "p",
   "Источник: GitHub Releases · Kenorbrook/LocalizationStudio. Перед установкой создаётся резервная копия; приложение перезапустится, сохранив очередь и настройки.",
@@ -165,6 +169,17 @@ function displayUpdateState(state) {
   updateProgress.hidden = state.phase !== "downloading";
   updateProgress.max = state.total || 1;
   updateProgress.value = state.downloaded || 0;
+  updateTransfer.hidden = !["downloading", "ready"].includes(state.phase);
+  const megabytes = (value) =>
+    ((value || 0) / 1000000).toLocaleString("ru-RU", {
+      maximumFractionDigits: 1,
+    });
+  setText(
+    updateTransfer,
+    state.mode === "files"
+      ? `Скачано ${megabytes(state.downloaded)} из ${megabytes(state.total)} МБ · Без повторной загрузки: ${state.reused_files || 0} файлов (${megabytes(state.reused_bytes)} МБ)`
+      : `Скачано ${megabytes(state.downloaded)} из ${megabytes(state.total)} МБ`,
+  );
   for (const [key, input] of Object.entries(updateOptions))
     input.checked = !!state.preferences[key];
 }

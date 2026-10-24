@@ -64,6 +64,7 @@ def main():
                     plan["database"],
                     "--resume-update",
                     str(Path(args.plan).resolve()),
+                    *(["--hidden"] if plan.get("hidden") is True else []),
                 ],
                 creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )

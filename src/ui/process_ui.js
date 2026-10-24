@@ -431,6 +431,7 @@ studioLifecycle.register(
     );
   },
 );
+const preservationDrafts = new Map();
 studioLifecycle.register("render", "literalRender", (data, quiet = false) => {
   const map = new Map(data.rows.map((row) => [row.id, row]));
   for (const card of $("rows").querySelectorAll(".record")) {
@@ -465,12 +466,36 @@ studioLifecycle.register("render", "literalRender", (data, quiet = false) => {
       actions.replaceChildren(translate, contextButton);
     } else if (!humanVerified(row)) {
       const menu = element("details");
+      menu.dataset.preserveMenu = row.id;
       menu.append(element("summary", "Оставить оригинал без перевода"));
+      const draftKey = `${studioState.project}/${row.id}`;
       const reason = element("input");
+      reason.dataset.preserveReason = row.id;
+      reason.setAttribute("aria-label", "Причина сохранения оригинала");
       reason.placeholder = "Почему: другой язык, авторский приём…";
       reason.maxLength = 1000;
       reason.style.width = "100%";
-      const preserve = element("button", "Другой язык / авторский приём");
+      reason.value = preservationDrafts.get(draftKey) || "";
+      reason.oninput = () => {
+        if (reason.value) preservationDrafts.set(draftKey, reason.value);
+        else preservationDrafts.delete(draftKey);
+      };
+      menu.open = preservationDrafts.has(draftKey);
+      const presets = element("div", undefined, "flex wrap");
+      for (const value of ["Другой язык", "Авторский приём"]) {
+        const preset = element("button", value);
+        preset.type = "button";
+        preset.dataset.preservePreset = value;
+        preset.onclick = () => {
+          reason.value = value;
+          reason.oninput();
+          reason.focus({ preventScroll: true });
+          reason.setSelectionRange(value.length, value.length);
+        };
+        presets.append(preset);
+      }
+      const preserve = element("button", "Сохранить оригинал", "primary");
+      preserve.dataset.preserveSubmit = row.id;
       preserve.onclick = guard(async () => {
         if (studioState.dirty.has(row.id))
           throw Error("Сохраните или отмените правку");
@@ -482,10 +507,12 @@ studioLifecycle.register("render", "literalRender", (data, quiet = false) => {
           kind: "foreign",
           reason: reason.value.trim(),
         });
+        preservationDrafts.delete(draftKey);
         await refresh();
         await loadRows();
+        toast("Оригинал сохранён без перевода");
       });
-      menu.append(reason, preserve);
+      menu.append(reason, presets, preserve);
       actions.append(menu);
     }
   }

@@ -289,7 +289,10 @@ function currentRecordPage() {
 }
 function editorIsActive() {
   return (
-    studioState.dirty.size || document.activeElement.tagName === "TEXTAREA"
+    studioState.dirty.size ||
+    document.activeElement.matches(
+      "textarea, input, select, [contenteditable='true']",
+    )
   );
 }
 async function loadRows(quiet = false) {
@@ -334,7 +337,7 @@ function renderRecordCards(data, quiet = false) {
   );
   $("prev").disabled = studioState.offset === 0;
   $("next").disabled = studioState.offset + 50 >= studioState.total;
-  const destination = document.createDocumentFragment();
+  const destination = [];
   const existing = new Map(
     [...$("rows").querySelectorAll(".record")].map((c) => [+c.dataset.id, c]),
   );
@@ -473,18 +476,18 @@ function renderRecordCards(data, quiet = false) {
     updateEditorActions();
     card.append(top, pair, actions);
     const old = existing.get(r.id);
-    destination.append(
+    destination.push(
       quiet && old?.dataset.version === card.dataset.version ? old : card,
     );
   }
   if (!studioState.rows.length)
-    destination.append(
+    destination.push(
       quiet && $("rows").querySelector(".empty")
         ? $("rows").querySelector(".empty")
         : element("div", "Нет строк для отображения", "empty"),
     );
   let cursor = $("rows").firstChild;
-  for (const node of [...destination.childNodes]) {
+  for (const node of destination) {
     if (node !== cursor) $("rows").insertBefore(node, cursor);
     cursor = node.nextSibling;
   }

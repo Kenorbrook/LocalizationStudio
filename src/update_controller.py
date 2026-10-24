@@ -14,6 +14,7 @@ from pathlib import Path
 from paths import APP_HOME
 from update_feed import latest, download
 from update_package import extract_bundle
+from update_files import stage_files
 from version import VERSION, REPOSITORY
 
 PREFERENCES = {"auto_check": False, "auto_download": False, "auto_install": False}
@@ -130,13 +131,24 @@ class UpdateController:
             session.mkdir(parents=True)
             self.session = session
             archive = session / "release.zip"
+            self._set(
+                downloaded=0,
+                total=0,
+                reused_files=0,
+                reused_bytes=0,
+                changed_files=0,
+                mode="archive",
+            )
             try:
-                download(
-                    self.release,
-                    archive,
-                    lambda done, total: self._set(downloaded=done, total=total),
-                )
-                extract_bundle(archive, session / "bundle", self.release["latest"])
+                if self.release.get("incremental"):
+                    stage_files(self.release, self.home, session / "bundle", self._set)
+                else:
+                    download(
+                        self.release,
+                        archive,
+                        lambda done, total: self._set(downloaded=done, total=total),
+                    )
+                    extract_bundle(archive, session / "bundle", self.release["latest"])
             except Exception:
                 from update_package import reject_links
 
@@ -277,6 +289,7 @@ class UpdateController:
                     "gui_pid": os.getpid(),
                     "resume_jobs": resumed,
                     "waiting_jobs": waiting,
+                    "hidden": "--hidden" in sys.argv,
                 }
                 plan_path = self.session / "plan.json"
                 plan_path.write_text(json.dumps(plan), encoding="utf-8")

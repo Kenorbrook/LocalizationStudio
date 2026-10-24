@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import re
 import stat
 import shutil
 import zipfile
@@ -34,6 +35,13 @@ def safe_name(name):
         or not path.parts
         or path.as_posix() != name
         or any(part.endswith((".", " ")) for part in path.parts)
+        or any(re.search(r'[<>"|?*\x00-\x1f]', part) for part in path.parts)
+        or any(
+            re.fullmatch(
+                r"(?:CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?", part, re.IGNORECASE
+            )
+            for part in path.parts
+        )
     ):
         raise ValueError("Недопустимый путь в обновлении")
     if path.parts[0] != "_internal" and name not in ROOT_FILES:
