@@ -66,6 +66,12 @@
     choices.push({name:"studio-hermes-fixture:latest",size:1000});preparePhase="ready";await hermesUi.refresh();
     check("preparedProfileIsSelectedAndSaved",$("hermesModel").value==="studio-hermes-fixture:latest"&&(await real.get_hermes_state()).preferences.context===98304&&!$("hermesModel").disabled);
     check("preparationFeedbackNamesProfileAndTokens",$("hermesPreparationStatus").textContent.includes("studio-hermes-fixture")&&$("hermesPreparationStatus").textContent.includes("98"));
+    api.get_hermes_state=async(project=0)=>({...await real.get_hermes_state(project),busy:true,phase:"running",message:"Получаем ответ модели · 03:20 · шаг 2 · получено 123 символов"});
+    await hermesUi.refresh();
+    check("slowAgentProgressShownWithElapsedTime",$("hermesStatus").textContent.includes("03:20")&&$("saveHermes").disabled&&!$("stopHermes").hidden);
+    $("hermesReportDialog").showModal();
+    check("reportShowsLiveProgressAndStop",$("hermesProjectStatus").textContent.includes("123")&&!$("stopHermesTask").hidden);
+    $("hermesReportDialog").close();
     api.get_hermes_state=real.get_hermes_state;api.prepare_hermes_model=real.prepare_hermes_model;
 
     $("hermesSettingsDialog").close();await wait(30);

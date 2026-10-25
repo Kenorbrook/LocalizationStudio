@@ -8,6 +8,13 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 request = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from hermes_progress import Progress, RUN_BUDGET, MAX_TOKENS, MAX_ITERATIONS
+
+progress = Progress(
+    request.get("progress", str(Path(request["result"]).with_name("progress.json")))
+)
+progress.emit("startup")
 sys.path.insert(0, sys.argv[2])
 import hermes_bootstrap
 from run_agent import AIAgent
@@ -20,6 +27,7 @@ else:
         raise ValueError("Hermes plugin only uses a local model")
     from hermes_cli.mcp_startup import ensure_mcp_discovery_before_agent_build
 
+    progress.emit("connecting")
     ensure_mcp_discovery_before_agent_build(
         logger=logging.getLogger(__name__), single_query=True
     )
@@ -29,15 +37,21 @@ else:
         api_key="ollama",
         base_url=base_url,
         enabled_toolsets=["mcp-studio"],
-        max_iterations=8,
+        max_iterations=MAX_ITERATIONS,
         quiet_mode=True,
         skip_memory=True,
         load_soul_identity=False,
         skip_context_files=True,
         skip_background_review=True,
-        run_budget_seconds=240,
+        run_budget_seconds=RUN_BUDGET,
+        step_callback=progress.model_step,
+        stream_delta_callback=progress.delta,
+        reasoning_callback=progress.delta,
+        tool_start_callback=progress.tool_start,
+        tool_complete_callback=progress.tool_complete,
         request_overrides={
-            "max_tokens": 1600,
+            "max_tokens": MAX_TOKENS,
+            "reasoning_effort": "none",
         },
     )
     try:
@@ -51,10 +65,12 @@ else:
             json.dumps({"text": text}, ensure_ascii=False), encoding="utf-8"
         )
     finally:
+        progress.emit("cleanup")
         agent.close()
         from tools.mcp_tool_lifecycle import shutdown_mcp_servers
 
         shutdown_mcp_servers()
+progress.emit("done")
 sys.stdout.flush()
 sys.stderr.flush()
 os._exit(0)

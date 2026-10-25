@@ -1,6 +1,7 @@
 """Exercise the real pinned optional installer in a neutral workspace."""
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -8,6 +9,7 @@ import stat
 import sys
 import time
 import threading
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -22,6 +24,7 @@ def main():
     parser.add_argument("--install", action="store_true")
     parser.add_argument("--exercise", action="store_true")
     parser.add_argument("--cleanup", action="store_true")
+    parser.add_argument("--existing-runtime", type=Path)
     args = parser.parse_args()
     if args.cleanup:
         if args.install or args.exercise:
@@ -32,12 +35,24 @@ def main():
         return
     store = Store(ROOT / "qa-hermes/runtime/test.sqlite3")
     plugin = HermesPlugin(store)
+    if args.existing_runtime:
+        if args.install or not args.exercise:
+            parser.error("Use --existing-runtime only with --exercise")
+        from hermes_install import COMMIT
+
+        source = args.existing_runtime.resolve()
+        if not (source / "run_agent.py").is_file():
+            raise RuntimeError("Existing runtime source is missing")
+        fixture_source = plugin.root / "home/hermes-agent"
+        fixture_source.mkdir(parents=True, exist_ok=True)
+        (fixture_source / "run_agent.py").write_text("# neutral fixture")
+        (plugin.root / "installed.json").write_text(json.dumps({"commit": COMMIT}))
     if args.install:
         plugin.install()
         while plugin.busy:
             time.sleep(1)
     if args.exercise:
-        exercise(plugin, store)
+        exercise(plugin, store, args.existing_runtime)
         check_cancel(plugin)
     result = plugin.snapshot()
     (ROOT / "reports/hermes-runtime-result.json").write_text(
@@ -111,7 +126,7 @@ def check_cancel(plugin):
     print(json.dumps({"owned_process_cancelled": True}), flush=True)
 
 
-def exercise(plugin, store):
+def exercise(plugin, store, existing_runtime=None):
     """Real Hermes + real Studio MCP, deterministic local LLM protocol fixture."""
     calls = []
 
@@ -147,6 +162,8 @@ def exercise(plugin, store):
                     }
                 )
             calls.append(payload)
+            assert payload["reasoning_effort"] == "none"
+            assert payload["max_tokens"] == 1000
             (ROOT / "reports/hermes-last-llm-request.json").write_text(
                 json.dumps(payload, indent=2), encoding="utf-8"
             )
@@ -248,6 +265,39 @@ def exercise(plugin, store):
 
     plugin.models = HermesModels(f"http://127.0.0.1:{server.server_port}")
     original = plugin._request
+    if existing_runtime:
+        source = existing_runtime.resolve()
+        key = hashlib.sha256(str(source).encode()).hexdigest()[:16]
+        facts = json.loads(
+            (source.parent / "installs" / key / "facts.json").read_text()
+        )
+        python = Path(facts["packages"]["venv"]["environment"]) / "Scripts/python.exe"
+
+        def standalone(payload):
+            folder = plugin.root / "runs" / uuid.uuid4().hex
+            folder.mkdir(parents=True)
+            payload.update(
+                result=str(folder / "result.json"),
+                progress=str(folder / "progress.json"),
+            )
+            request = folder / "request.json"
+            request.write_text(json.dumps(payload), encoding="utf-8")
+            plugin._run(
+                [
+                    str(python),
+                    "-I",
+                    "-X",
+                    "utf8",
+                    str(ROOT / "src/plugin_resources/hermes_bridge.py"),
+                    str(request),
+                    str(source),
+                ],
+                timeout=180,
+                progress=payload["progress"],
+            )
+            return json.loads(Path(payload["result"]).read_text(encoding="utf-8"))
+
+        original = standalone
     plugin._request = lambda payload: original(
         {**payload, "base_url": f"http://127.0.0.1:{server.server_port}/v1"}
     )

@@ -29,7 +29,7 @@ TOOLS = [
         ),
         (
             "translation_errors",
-            "Read up to 50 unresolved errors in this game, without credentials or other projects.",
+            "Read up to 12 unresolved errors in this game, without credentials or other projects.",
             {},
         ),
         (
@@ -55,9 +55,40 @@ def call(store, project, name, args):
     root = project_root(store, project)
     if name == "inspect_game_project":
         report = analyze(root)
-        report["candidates"] = report["candidates"][:50]
-        report["archives"] = report["archives"][:50]
-        return report
+        candidates = sorted(
+            report["candidates"], key=lambda item: not item.get("supported")
+        )
+        compact = {
+            key: report.get(key)
+            for key in [
+                "root",
+                "engine",
+                "storage",
+                "replacement",
+                "language_switch",
+                "capabilities",
+                "partial",
+                "scanned_files",
+                "documentation",
+            ]
+        }
+        compact["candidates"] = [
+            {
+                key: item[key]
+                for key in ["path", "format", "role", "supported", "reason"]
+                if key in item
+            }
+            for item in candidates[:12]
+        ]
+        compact["candidates_total"] = len(candidates)
+        compact["archives"] = report["archives"][:8]
+        compact["archives_total"] = len(report["archives"])
+        compact["warnings"] = report.get("warnings", [])[:5]
+        compact["untrusted_game_data"] = True
+        compact["listing_truncated"] = (
+            len(candidates) > 12 or len(report["archives"]) > 8
+        )
+        return compact
     if name == "read_game_text":
         relative = args.get("path", "")
         if (
@@ -92,12 +123,15 @@ def call(store, project, name, args):
             return [
                 dict(row)
                 for row in db.execute(
-                    "SELECT e.id,e.record,substr(e.message,1,300) message,substr(r.source,1,800) source FROM errors e JOIN records r ON r.id=e.record JOIN files f ON f.id=r.file JOIN jobs j ON j.id=e.job WHERE e.project=? AND f.project=? AND j.provider='local' AND e.resolved=0 ORDER BY e.id DESC LIMIT 50",
+                    "SELECT e.id,e.record,substr(e.message,1,240) message,substr(r.source,1,400) source FROM errors e JOIN records r ON r.id=e.record JOIN files f ON f.id=r.file JOIN jobs j ON j.id=e.job WHERE e.project=? AND f.project=? AND j.provider='local' AND e.resolved=0 ORDER BY e.id DESC LIMIT 12",
                     (project, project),
                 )
             ]
     if name == "retry_plan":
         result = plan(store, project)
+        result["records_total"] = len(result["rows"])
+        result["listing_truncated"] = len(result["rows"]) > 12
+        result["rows"] = result["rows"][:12]
         for row in result["rows"]:
             row["parameters"] = {
                 key: row["settings"].get(key)
