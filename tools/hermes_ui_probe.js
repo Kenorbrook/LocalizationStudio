@@ -1,4 +1,4 @@
-(async () => {
+void (async () => {
   const checks = {};
   const check = (name, value) => {checks[name] = !!value;if (!value) throw Error(name);};
   const wait = ms => new Promise(resolve=>setTimeout(resolve,ms));
@@ -9,7 +9,10 @@
     for(let n=0;n<150&&!studioState.project;n++)await wait(40);
     await refresh();
     const api=window.pywebview.api;
-    for(const key of ["get_plugins","set_plugin_enabled","set_plugin_favorite","get_hermes_models","prepare_hermes_model","get_hermes_state"])real[key]=api[key];
+    for(const key of ["plugin_call","get_plugins","set_plugin_enabled","set_plugin_favorite","get_hermes_models","prepare_hermes_model","get_hermes_state"])real[key]=api[key];
+    const hermesUi={refresh:()=>pluginHost.instance("hermes").refresh()};
+    const commands={state:"get_hermes_state",models:"get_hermes_models",prepare_model:"prepare_hermes_model"};
+    api.plugin_call=(id,command,args)=>commands[command]?api[commands[command]](...args):real.plugin_call(id,command,args);
     let modelsOffline=false;
     const choices=[{name:"fixture-agent",size:1000,details:{parameter_size:"4B"}},{name:"fixture-other",size:2000,details:{parameter_size:"8B"}}];
     api.get_hermes_models=async()=>modelsOffline?{online:false,models:[],error:"Ollama недоступна. Запустите Ollama"}:{online:true,models:structuredClone(choices),error:""};
@@ -22,8 +25,12 @@
     check("pluginManagerWorksOutsideProjectSettings",!$("projectSettingsDialog").open&&!$("updatesDialog").open);
     const t=toggle("hermes");
     t.checked=true;await t.onchange();
+    await pluginHost.ready();
+    check("enabledPluginContributesProjectUi",!!$("hermesSources")&&!!$("hermesExplainErrors"));
     check("quickEnableSavedImmediately",(await api.get_hermes_state()).preferences.enabled);
     t.checked=false;await t.onchange();
+    await pluginHost.ready();
+    check("disabledPluginRemovesProjectUi",!$("hermesSources")&&!$("hermesExplainErrors")&&!$("hermesSettingsDialog"));
     check("quickDisableSavedImmediately",!(await api.get_hermes_state()).preferences.enabled&&!t.checked);
     const bounds=t.getBoundingClientRect();
     check("switchHasCompactAccessibleBounds",bounds.width>=40&&bounds.width<=50&&bounds.height>=24&&t.getAttribute("role")==="switch"&&!!t.getAttribute("aria-label"));
@@ -75,15 +82,15 @@
     api.get_hermes_state=real.get_hermes_state;api.prepare_hermes_model=real.prepare_hermes_model;
 
     $("hermesSettingsDialog").close();await wait(30);
+    t.checked=true;await t.onchange();await pluginHost.ready();
     showView("home");await $("projectSources").onclick();await hermesUi.refresh();
     check("researchLivesWithProjectSources",$("settingsPanel-files").contains($("hermesResearch"))&&!$("settingsPanel-files").hidden);
-    check("disabledResearchHasVisibleReason",$("hermesResearch").disabled&&$("hermesSourcesReason").textContent.includes("отключён"));
-    await $("hermesSourcesSettings").onclick();
-    check("contextCanEnablePluginWithoutLosingProjectSettings",(await api.get_hermes_state()).preferences.enabled&&!$("hermesResearch").disabled&&$("projectSettingsDialog").open);
-    await api.set_plugin_enabled("hermes",false);await hermesUi.refresh();
+    check("enabledResearchAvailable",!$("hermesResearch").disabled);
     $("projectSettingsDialog").close();await wait(30);
     await $("errorsButton").onclick();await hermesUi.refresh();
     check("explanationLivesOnErrorsPage",errorsPane.contains($("hermesExplainErrors"))&&!errorsPane.hidden);
+    await api.set_plugin_enabled("hermes",false);await pluginsUi.refresh();await pluginHost.ready();
+    check("disabledAgentLeavesCoreRecovery",!$("hermesExplainErrors")&&!!$("errorRecoveryDetails"));
     $("errorRecoveryDetails").open=true;
     $("automaticErrorRetry").checked=true;await $("automaticErrorRetry").onchange();
     check("recoveryWorksWithoutEnabledHermes",(await api.get_hermes_state(studioState.project)).automatic_retry&&!saved.preferences.enabled);

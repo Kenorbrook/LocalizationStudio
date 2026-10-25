@@ -1,0 +1,11 @@
+{
+  "id": "paper-theme",
+  "name": "Бумага",
+  "version": "1.0.0",
+  "api_version": 1,
+  "min_app_version": "0.6.0",
+  "category": "Оформление",
+  "description": "Пример самостоятельного плагина: светлая тема для всего окна Studio",
+  "ui": "ui/entry.js",
+  "permissions": ["ui", "theme"]
+}

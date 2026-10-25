@@ -43,9 +43,12 @@ def main():
         from mcp_server import serve_stdio
 
         if args.agent_project:
-            from hermes_tools import project_root
+            from plugin_manager import PluginManager
 
-            project_root(store, args.agent_project)
+            plugins = PluginManager(store)
+            backend = plugins.entry("hermes")["backend_module"]
+            backend.hermes_tools.project_root(store, args.agent_project)
+            store.agent_tools = backend.hermes_tools
             store.agent_project = args.agent_project
         serve_stdio(store)
         return
@@ -88,9 +91,10 @@ def main():
 
     close_controller = CloseController(store)
     updates = UpdateController(store, close_controller)
-    from hermes_plugin import HermesPlugin
+    from plugin_manager import PluginManager
 
-    hermes = HermesPlugin(store)
+    plugins = PluginManager(store)
+    updates.plugins = plugins
     from app_inspection import AppInspection
 
     inspection = AppInspection(store.path)
@@ -106,6 +110,7 @@ def main():
                 False,
                 lambda server: (servers.append(server), ready.set()),
                 inspection,
+                plugins,
             )
         except Exception as e:
             failures.append(str(e))
@@ -128,7 +133,7 @@ def main():
         hidden=args.hidden,
         focus=not args.hidden,
         background_color="#11171b",
-        js_api=DesktopApi(close_controller, updates, hermes),
+        js_api=DesktopApi(close_controller, updates, manager=plugins),
     )
     close_controller.window = window
     inspection.window = window
@@ -219,7 +224,7 @@ def main():
         )
     finally:
         inspection.dispose()
-        hermes.dispose()
+        plugins.dispose()
         updates.dispose()
         close_controller.dispose()
         server.shutdown()

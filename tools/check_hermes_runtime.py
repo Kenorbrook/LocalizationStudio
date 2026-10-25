@@ -288,7 +288,7 @@ def exercise(plugin, store, existing_runtime=None):
                     "-I",
                     "-X",
                     "utf8",
-                    str(ROOT / "src/plugin_resources/hermes_bridge.py"),
+                    str(ROOT / "plugins/hermes/resources/hermes_bridge.py"),
                     str(request),
                     str(source),
                 ],

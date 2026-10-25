@@ -22,7 +22,7 @@ UI_RESOURCES = {
 }
 
 
-def serve(store, port, open_browser, ready=None, inspection=None):
+def serve(store, port, open_browser, ready=None, inspection=None, plugins=None):
     token_path = store.path.with_name("server.token")
     if token_path.exists():
         token = token_path.read_text(encoding="ascii").strip()
@@ -64,6 +64,14 @@ def serve(store, port, open_browser, ready=None, inspection=None):
                         .replace("__TOKEN__", token)
                     )
                     return self.respond(html, kind="text/html; charset=utf-8")
+                if plugins and url.path.startswith("/plugins/"):
+                    _, _, key, generation, name = url.path.split("/", 4)
+                    kind = (
+                        "text/css; charset=utf-8"
+                        if name.endswith(".css")
+                        else "text/javascript; charset=utf-8"
+                    )
+                    return self.respond(plugins.asset(key, generation, name), kind=kind)
                 resource = UI_RESOURCES.get(url.path)
                 if resource:
                     filename, content_type = resource

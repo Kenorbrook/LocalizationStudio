@@ -166,7 +166,9 @@ class UpdateController:
         return self._launch("downloading", action)
 
     def idle(self):
-        if getattr(self.store, "hermes_busy", False):
+        if getattr(self.store, "hermes_busy", False) or (
+            getattr(self, "plugins", None) and self.plugins.busy
+        ):
             return False
         with self.store.db() as db:
             active = db.execute(
@@ -184,8 +186,10 @@ class UpdateController:
         )
 
     def install(self):
-        if getattr(self.store, "hermes_busy", False):
-            raise ValueError("Сначала остановите работу плагина Hermes")
+        if getattr(self.store, "hermes_busy", False) or (
+            getattr(self, "plugins", None) and self.plugins.busy
+        ):
+            raise ValueError("Дождитесь завершения работы и обновления плагинов")
         if self.state["phase"] != "ready" or not self.session:
             raise ValueError("Сначала скачайте обновление")
 
@@ -205,6 +209,12 @@ class UpdateController:
                 if connections(self.store):
                     raise ValueError("Отключите MCP-клиент перед установкой обновления")
                 with self.store.launch_lock:
+                    if getattr(self.store, "hermes_busy", False) or (
+                        getattr(self, "plugins", None) and self.plugins.busy
+                    ):
+                        raise ValueError(
+                            "Дождитесь завершения работы и обновления плагинов"
+                        )
                     self.store.closing = True
                     with self.store.db() as db:
                         rows = [

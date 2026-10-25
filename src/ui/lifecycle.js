@@ -7,6 +7,9 @@ const studioLifecycle = (() => {
       throw new Error(`Duplicate ${phase} hook: ${name}`);
     callbacks.set(name, callback);
     hooks.set(phase, callbacks);
+    return () => {
+      if (callbacks.get(name) === callback) callbacks.delete(name);
+    };
   }
   function notify(phase, context) {
     for (const callback of hooks.get(phase)?.values() || []) callback(context);
@@ -28,6 +31,9 @@ const studioLifecycle = (() => {
   function registerPage(mode, descriptor) {
     if (pages.has(mode)) throw new Error(`Duplicate record page: ${mode}`);
     pages.set(mode, descriptor);
+    return () => {
+      if (pages.get(mode) === descriptor) pages.delete(mode);
+    };
   }
   function page(mode) {
     return pages.get(mode)?.();

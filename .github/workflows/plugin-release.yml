@@ -1,0 +1,38 @@
+name: Publish independent plugin package
+on:
+  push:
+    tags: ['plugin-*-v*']
+permissions:
+  contents: write
+jobs:
+  plugin:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate and package
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          ./.venv/Scripts/python.exe -m pip install -r requirements-dev.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Dependencies failed' }
+          ./.venv/Scripts/python.exe -m unittest discover -s tests -t . -p 'test_*.py'
+          if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
+          if ($env:GITHUB_REF_NAME -notmatch '^plugin-([a-z][a-z0-9-]*)-v(\d+\.\d+\.\d+)$') { throw 'Invalid plugin tag' }
+          $pluginId = $Matches[1]
+          $pluginVersion = $Matches[2]
+          $manifest = Get-Content "plugins/$pluginId/plugin.json" -Raw | ConvertFrom-Json
+          if ($manifest.version -ne $pluginVersion -or $manifest.id -ne $pluginId) { throw 'Tag does not match plugin' }
+          ./.venv/Scripts/python.exe tools/package_plugin.py $pluginId
+          if ($LASTEXITCODE -ne 0) { throw 'Packaging failed' }
+      - name: Publish without replacing latest application release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ($env:GITHUB_REF_NAME -notmatch '^plugin-([a-z][a-z0-9-]*)-v') { throw 'Invalid plugin tag' }
+          $pluginId = $Matches[1]
+          gh release create $env:GITHUB_REF_NAME "release/plugin-packages/$pluginId/$env:GITHUB_REF_NAME.zip" "release/plugin-packages/$pluginId/SHA256SUMS.txt" --title "$($pluginId) plugin $env:GITHUB_REF_NAME" --notes-file docs/PLUGIN_RELEASE_NOTES.md --verify-tag --latest=false
+          if ($LASTEXITCODE -ne 0) { throw 'Plugin publication failed' }

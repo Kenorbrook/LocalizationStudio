@@ -1,0 +1,18 @@
+{
+  "id": "hermes",
+  "name": "Hermes Agent",
+  "version": "1.0.0",
+  "api_version": 1,
+  "min_app_version": "0.6.0",
+  "description": "Исследование игровых файлов и разбор ошибок через локальную модель",
+  "category": "ИИ-помощники",
+  "backend": "__init__.py",
+  "ui": "ui/entry.js",
+  "permissions": [
+    "backend",
+    "project.read",
+    "local.model",
+    "ui"
+  ],
+  "upstream_version": "0.22.5"
+}

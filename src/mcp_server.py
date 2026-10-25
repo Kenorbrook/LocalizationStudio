@@ -281,13 +281,20 @@ def handle(store, request):
         elif method == "ping":
             result = {}
         elif method == "tools/list":
-            from hermes_tools import TOOLS as AGENT_TOOLS
-
-            result = {"tools": AGENT_TOOLS if agent_project else TOOLS}
+            if agent_project:
+                agent_module = vars(store).get("agent_tools")
+                if agent_module is None:
+                    import hermes_tools as agent_module
+                result = {"tools": agent_module.TOOLS}
+            else:
+                result = {"tools": TOOLS}
         elif method == "tools/call":
             try:
                 if agent_project:
-                    from hermes_tools import call as agent_call
+                    agent_module = vars(store).get("agent_tools")
+                    if agent_module is None:
+                        import hermes_tools as agent_module
+                    agent_call = agent_module.call
 
                     value = agent_call(
                         store,

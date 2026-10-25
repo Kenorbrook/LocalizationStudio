@@ -5,18 +5,23 @@ import threading
 
 
 class PluginCatalog:
-    def __init__(self, store, hermes):
+    def __init__(self, store, hermes=None, manager=None):
         self.path = store.path.resolve().parent / "plugins/catalog.json"
-        self.lock = threading.RLock()
-        self.entries = {
-            "hermes": {
-                "provider": hermes,
-                "name": "Hermes Agent",
-                "description": "Исследование игровых файлов и разбор ошибок через локальную модель",
-                "category": "ИИ-помощники",
-                "version": "0.22.5",
+        self.lock = manager.lock if manager else threading.RLock()
+        self.manager = manager
+        self.entries = (
+            manager.entries
+            if manager
+            else {
+                "hermes": {
+                    "provider": hermes,
+                    "name": "Hermes Agent",
+                    "description": "Исследование игровых файлов и разбор ошибок через локальную модель",
+                    "category": "ИИ-помощники",
+                    "version": "1.0.0",
+                }
             }
-        }
+        )
         try:
             saved = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(saved, dict):
@@ -41,9 +46,11 @@ class PluginCatalog:
                         **{
                             key: value
                             for key, value in entry.items()
-                            if key != "provider"
+                            if key
+                            not in {"provider", "backend_module", "root", "files"}
                         },
                         **entry["provider"].summary(),
+                        **(self.manager.metadata(identity) if self.manager else {}),
                         "favorite": identity in self.favorites,
                     }
                     for identity, entry in self.entries.items()
@@ -51,12 +58,14 @@ class PluginCatalog:
             }
 
     def set_enabled(self, identity, enabled):
-        self._entry(identity)["provider"].set_enabled(enabled)
-        return self.snapshot()
+        with self.lock:
+            self._entry(identity)["provider"].set_enabled(enabled)
+            return self.snapshot()
 
     def configure(self, identity, values):
-        self._entry(identity)["provider"].configure_settings(values)
-        return self.snapshot()
+        with self.lock:
+            self._entry(identity)["provider"].configure_settings(values)
+            return self.snapshot()
 
     def set_favorite(self, identity, favorite):
         self._entry(identity)

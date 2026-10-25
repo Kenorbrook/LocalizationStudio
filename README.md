@@ -206,3 +206,5 @@ CLI `src/translation_tools/run_translation.ps1` предназначен для 
 Ошибки и предложения можно оставлять в [Issues](https://github.com/Kenorbrook/LocalizationStudio/issues). Для отчёта используйте нейтральный пример и не прикладывайте API-ключи или приватные игровые тексты.
 
 Зависимости и их лицензии: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). В архив релиза включены доступные уведомления о лицензиях сторонних компонентов.
+
+Самостоятельные пакеты и расширение интерфейса: [Плагины, API 1](docs/PLUGINS.md).

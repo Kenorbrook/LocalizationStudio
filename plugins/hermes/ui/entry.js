@@ -1,14 +1,34 @@
-"use strict";
-const hermesUi = (() => {
+export function create(api) {
+  const {
+    element,
+    guard,
+    setText,
+    toast,
+    $,
+    workspaceUi,
+    studioState,
+    pluginsUi,
+  } = api.ui;
+  const studioLifecycle = api.lifecycle;
+  const native = {
+    get_hermes_state: (project) => api.call("state", project),
+    get_hermes_models: () => api.call("models"),
+    prepare_hermes_model: (model, context) =>
+      api.call("prepare_model", model, context),
+    install_hermes: () => api.call("install"),
+    check_hermes: () => api.call("check"),
+    cancel_hermes: () => api.call("cancel"),
+    run_hermes: (project, mode) => api.call("run", project, mode),
+    configure_plugin: (_id, values) => api.configure(values),
+    set_plugin_enabled: (_id, enabled) => api.setEnabled(enabled),
+  };
   let state = null,
     editing = false,
     sequence = 0,
-    recoveryPending = false,
     inventory = [],
     modelsOnline = false,
     modelsLoading = false,
     ownPreparation = false;
-  const recoveryViews = [];
   function button(id, text, parent, action, className) {
     const node = element("button", text, className);
     node.id = id;
@@ -28,7 +48,7 @@ const hermesUi = (() => {
     header.prepend(title);
     const body = element("div", undefined, "plugin-settings-body");
     dialog.append(header, body);
-    document.body.append(dialog);
+    api.mount("app.dialogs", dialog);
     return { dialog, body, title };
   }
   const settings = modal("hermesSettingsDialog", "Настройки Hermes Agent");
@@ -83,7 +103,7 @@ const hermesUi = (() => {
         tokens = +context.value;
       ownPreparation = true;
       try {
-        await window.pywebview.api.prepare_hermes_model(selected, tokens);
+        await native.prepare_hermes_model(selected, tokens);
         await refresh();
         await pluginsUi.refresh();
       } catch (error) {
@@ -107,7 +127,7 @@ const hermesUi = (() => {
     "Скачать и установить",
     actions,
     async () => {
-      await window.pywebview.api.install_hermes();
+      await native.install_hermes();
       await refresh();
       await pluginsUi.refresh();
     },
@@ -118,13 +138,13 @@ const hermesUi = (() => {
     "Проверить подключение",
     actions,
     async () => {
-      await window.pywebview.api.check_hermes();
+      await native.check_hermes();
       await refresh();
       await pluginsUi.refresh();
     },
   );
   const stop = button("stopHermes", "Остановить", actions, async () => {
-    await window.pywebview.api.cancel_hermes();
+    await native.cancel_hermes();
     await refresh();
   });
   const logDetails = element("details");
@@ -148,7 +168,7 @@ const hermesUi = (() => {
     settings.dialog.close(),
   );
   const save = button("saveHermes", "Сохранить параметры", footer, async () => {
-    await window.pywebview.api.configure_plugin("hermes", {
+    await native.configure_plugin("hermes", {
       model: model.value.trim(),
       context: +context.value,
     });
@@ -192,7 +212,7 @@ const hermesUi = (() => {
     setText(modelAvailability, "Читаем установленные модели Ollama…");
     render();
     try {
-      const result = await window.pywebview.api.get_hermes_models();
+      const result = await native.get_hermes_models();
       modelsOnline = !!result.online;
       inventory = result.models || [];
       const selected = model.value || state?.preferences.model || "";
@@ -240,11 +260,11 @@ const hermesUi = (() => {
       render();
     }
   }
-  pluginsUi.register("hermes", {
+  const adapter = {
     configure: openSettings,
     install: openSettings,
-    stop: () => window.pywebview.api.cancel_hermes(),
-  });
+    stop: () => native.cancel_hermes(),
+  };
 
   const task = modal("hermesReportDialog", "Исследование с Hermes");
   const taskStatus = element("p", undefined, "sub");
@@ -258,7 +278,7 @@ const hermesUi = (() => {
     "Остановить Hermes",
     taskActions,
     async () => {
-      await window.pywebview.api.cancel_hermes();
+      await native.cancel_hermes();
       await refresh();
     },
   );
@@ -267,7 +287,7 @@ const hermesUi = (() => {
   async function runTask(mode) {
     const project = studioState.project;
     if (!project) throw Error("Откройте проект");
-    await window.pywebview.api.run_hermes(project, mode);
+    await native.run_hermes(project, mode);
     task.title.textContent =
       mode === "research"
         ? "Исследование игровых файлов"
@@ -293,7 +313,7 @@ const hermesUi = (() => {
   }
   async function connectHermes() {
     if (state?.installed && !state.preferences.enabled) {
-      await window.pywebview.api.set_plugin_enabled("hermes", true);
+      await native.set_plugin_enabled("hermes", true);
       await refresh();
       await pluginsUi.refresh();
     } else await openSettings();
@@ -333,7 +353,7 @@ const hermesUi = (() => {
     openReport,
   );
   sources.append(sourceTitle, sourceActions, sourceReason);
-  $("settingsPanel-files").querySelector(".ux-settings-group").after(sources);
+  api.mount("project.settings.files", sources);
   const overviewSources = element("section", undefined, "ux-overview-card");
   overviewSources.append(element("h2", "Файлы и источники"));
   button(
@@ -342,7 +362,7 @@ const hermesUi = (() => {
     overviewSources,
     () => workspaceUi.openSettings("files"),
   );
-  $("projectHome").querySelector(".ux-overview-grid").append(overviewSources);
+  api.mount("project.overview", overviewSources);
 
   const errorActions = element("section", undefined, "plugin-inline-group");
   errorActions.id = "hermesErrorActions";
@@ -368,97 +388,7 @@ const hermesUi = (() => {
   const errorReason = element("p", undefined, "sub");
   errorReason.id = "hermesErrorsReason";
   errorActions.append(errorActionsRow, errorReason);
-  errorsPane.prepend(errorActions);
-
-  const recoveryDialog = modal(
-    "recoverySettingsDialog",
-    "Автоповтор ошибок проекта",
-  );
-  function recoveryPanel(parent, suffix) {
-    const section = element("section", undefined, "plugin-inline-group");
-    const heading = element("h3", "Восстановление ошибок");
-    heading.append(
-      workspaceUi.help(
-        "Встроенная функция Studio, не требует Hermes. После штатного завершения локального перевода повторяет только ошибки памяти и лимитов: до двух дополнительных проходов и до 200 строк на задание. Паузы, аварийные остановки, ручные правки и сохранённые оригиналы защищены.",
-        "Об автоповторе",
-      ),
-    );
-    const label = element("label", undefined, "plugin-switch");
-    const automatic = element("input");
-    automatic.id = "automaticErrorRetry" + suffix;
-    automatic.type = "checkbox";
-    automatic.setAttribute("role", "switch");
-    const track = element("span", undefined, "plugin-switch-track");
-    track.setAttribute("aria-hidden", "true");
-    label.append(
-      automatic,
-      track,
-      document.createTextNode("Повторять ошибки памяти и лимитов"),
-    );
-    const hint = element(
-      "p",
-      "Для этого проекта · сохраняется сразу · работает без Hermes",
-      "sub",
-    );
-    const plan = element("pre", undefined, "plugin-task-report");
-    plan.id = "smartRetryPlan" + suffix;
-    const start = button(
-      "startSmartRetry" + suffix,
-      "Запустить подобранные повторы",
-      section,
-      async () => {
-        await window.pywebview.api.start_smart_retry(studioState.project);
-        await refresh();
-        await window.refresh();
-      },
-    );
-    section.prepend(heading, label, hint, plan);
-    parent.append(section);
-    automatic.onchange = async () => {
-      const project = studioState.project,
-        enabled = automatic.checked;
-      recoveryPending = true;
-      render();
-      try {
-        await window.pywebview.api.set_automatic_retry(project, enabled);
-        await refresh();
-      } catch (error) {
-        toast(error.message);
-      } finally {
-        recoveryPending = false;
-        render();
-      }
-    };
-    recoveryViews.push({ automatic, plan, start });
-  }
-  const recoveryDetails = element("details");
-  recoveryDetails.id = "errorRecoveryDetails";
-  recoveryDetails.append(
-    element("summary", "Автоповтор ошибок · встроенная функция"),
-  );
-  recoveryPanel(recoveryDetails, "");
-  errorActions.after(recoveryDetails);
-  recoveryPanel(recoveryDialog.body, "Settings");
-  const recoveryProject = element("section", undefined, "ux-settings-group");
-  const recoveryProjectHeading = element("h3", "Восстановление ошибок");
-  const recoverySummary = element("p", undefined, "sub");
-  recoverySummary.id = "projectRecoverySummary";
-  button(
-    "configureProjectRecovery",
-    "Настроить автоповторы",
-    recoveryProject,
-    async () => {
-      await refresh();
-      recoveryDialog.title.textContent =
-        "Автоповтор ошибок · " +
-        (studioState.snapshot?.projects.find(
-          (x) => x.id === studioState.project,
-        )?.name || "проект");
-      recoveryDialog.dialog.showModal();
-    },
-  );
-  recoveryProject.prepend(recoveryProjectHeading, recoverySummary);
-  $("settingsPanel-translation").append(recoveryProject);
+  api.mount("project.errors.actions", errorActions);
 
   function render(fill = false) {
     if (!state) return;
@@ -527,35 +457,12 @@ const hermesUi = (() => {
     setText(log, state.log || "Журнал пуст");
     setText(taskStatus, state.message);
     setText(report, state.report || "Отчёт ещё не получен");
-    const plan = state.retry_plan?.rows || [];
-    for (const view of recoveryViews) {
-      if (!recoveryPending) view.automatic.checked = !!state.automatic_retry;
-      view.automatic.disabled = recoveryPending || !studioState.project;
-      view.start.disabled = state.busy || !plan.length;
-      setText(
-        view.plan,
-        plan.length
-          ? plan
-              .map(
-                (row) =>
-                  `#${row.record}: ${row.reason}\nКонтекст ${row.parameters.context}, ответ ${row.parameters.max_output}`,
-              )
-              .join("\n\n")
-          : "Нет подходящих ошибок завершённого локального перевода",
-      );
-    }
-    setText(
-      recoverySummary,
-      state.automatic_retry
-        ? "Автоповтор включён для этого проекта"
-        : "Автоповтор отключён для этого проекта",
-    );
   }
   async function refresh(fill = false) {
-    if (!window.pywebview?.api?.get_hermes_state) return;
+    if (api.disposed) return;
     const current = ++sequence,
       project = studioState.project;
-    const value = await window.pywebview.api.get_hermes_state(project);
+    const value = await native.get_hermes_state(project);
     if (current !== sequence || project !== studioState.project) return;
     state = value;
     if (ownPreparation && !value.busy) {
@@ -576,7 +483,6 @@ const hermesUi = (() => {
         state = null;
         report.textContent = "";
         task.dialog.close();
-        recoveryDialog.dialog.close();
       }
       if (
         previousProject !== studioState.project ||
@@ -592,18 +498,17 @@ const hermesUi = (() => {
   studioLifecycle.register("pluginsChanged", "hermesAvailability", () =>
     refresh().catch((error) => toast(error.message)),
   );
-  $("projectSettingsButton").addEventListener("click", () =>
+  api.listen($("projectSettingsButton"), "click", () =>
     refresh().catch((error) => toast(error.message)),
   );
-  setInterval(() => {
+  api.interval(() => {
     if (
       settings.dialog.open ||
       task.dialog.open ||
-      recoveryDialog.dialog.open ||
       $("projectSettingsDialog").open ||
       studioState.viewMode === "errors"
     )
       refresh().catch((error) => setText(settingsStatus, error.message));
   }, 2500);
-  return { refresh, openSettings };
-})();
+  return { ...adapter, refresh, openSettings };
+}

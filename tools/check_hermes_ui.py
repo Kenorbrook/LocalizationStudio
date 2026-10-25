@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -20,9 +21,11 @@ from inspection_client import inspect_app
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--screen", choices=["settings", "sources", "errors", "empty"])
+    parser.add_argument("--extensions", action="store_true")
+    parser.add_argument("--state-only", action="store_true")
     args = parser.parse_args()
     parent = ROOT / "qa-knowledge"
-    fixture = parent / ("hermes-" + str(time.time_ns()))
+    fixture = parent / ("hermes-" + uuid.uuid4().hex)
     fixture.mkdir(parents=True)
     store = Store(fixture / "test.sqlite3")
     plugin_root = fixture / "plugins/hermes"
@@ -63,7 +66,53 @@ def main():
             + (ROOT / "tools/plugin_screen_probe.js").read_text(encoding="utf-8"),
             encoding="utf-8",
         )
-    name = "v053-plugin-" + (args.screen or "catalog")
+    if args.extensions:
+        from package_plugin import package
+
+        packages = []
+        template = (ROOT / "tools/plugin_extension_fixture.js").read_text(
+            encoding="utf-8"
+        )
+        for revision, color in [
+            ("1.0.0", "rgb(20,60,90)"),
+            ("1.0.1", "rgb(60,20,90)"),
+            ("1.0.2", "red"),
+        ]:
+            source = fixture / ("source-" + revision)
+            source.mkdir()
+            key = "qa-broken" if revision == "1.0.2" else "qa-extension"
+            manifest = dict(
+                id=key,
+                name="Нейтральное расширение",
+                version=revision,
+                api_version=1,
+                min_app_version="0.6.0",
+                category="Проверка",
+                description="Тест интерфейса, без модели",
+                ui="entry.js",
+                permissions=["ui", "theme"],
+            )
+            (source / "plugin.json").write_text(json.dumps(manifest), encoding="utf-8")
+            code = template.replace("__REVISION__", revision).replace(
+                "__COLOR__", color
+            )
+            if key == "qa-broken":
+                code = "export function create(api){ const node=document.createElement('div');node.id='qaPartialNode';api.mount('app.navigation',node);api.style('body{color:red}');throw Error('Neutral activation failure');}"
+            (source / "entry.js").write_text(code, encoding="utf-8")
+            output = fixture / revision
+            package(source, output)
+            packages.append(str(output / ("plugin-" + key + "-v" + revision + ".zip")))
+        probe = fixture / "extensions-probe.js"
+        probe.write_text(
+            "window.__extensionPackages="
+            + json.dumps(packages)
+            + ";\n"
+            + (ROOT / "tools/plugin_extensions_probe.js").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+    name = "v060-plugin-" + (
+        "extensions" if args.extensions else args.screen or "catalog"
+    )
     report = fixture / "probe.json"
     gui = subprocess.Popen(
         [
@@ -88,9 +137,12 @@ def main():
             time.sleep(0.25)
         result = json.loads(report.read_text(encoding="utf-8"))
         if result.get("passed"):
-            captured = inspect_app(store.path, True)
-            image = captured.pop("image")
-            (ROOT / f"reports/{name}.png").write_bytes(base64.b64decode(image["data"]))
+            captured = inspect_app(store.path, not args.state_only)
+            image = captured.pop("image", None)
+            if image:
+                (ROOT / f"reports/{name}.png").write_bytes(
+                    base64.b64decode(image["data"])
+                )
             (ROOT / f"reports/{name}-state.json").write_text(
                 json.dumps(captured, ensure_ascii=False, indent=2), encoding="utf-8"
             )

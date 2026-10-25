@@ -714,5 +714,21 @@ const workspaceUi = (() => {
   });
   selectTab("translation");
   if (studioState.snapshot) refreshWorkspace();
-  return { openSettings, selectTab, help, refreshDependencies };
+  function registerTab(id, label, node) {
+    if (panels.has(id)) throw Error("Раздел уже существует");
+    const panel = section(id, label);
+    panel.append(node);
+    panel.hidden = true;
+    const button = panels.get(id).button;
+    button.setAttribute("aria-selected", "false");
+    button.tabIndex = -1;
+    return () => {
+      const selected = button.getAttribute("aria-selected") === "true";
+      panel.remove();
+      button.remove();
+      panels.delete(id);
+      if (selected) selectTab("translation");
+    };
+  }
+  return { openSettings, selectTab, help, refreshDependencies, registerTab };
 })();

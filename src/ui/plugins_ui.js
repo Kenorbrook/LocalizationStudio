@@ -22,7 +22,42 @@ const pluginsUi = (() => {
   const category = element("select");
   category.id = "pluginCategory";
   category.setAttribute("aria-label", "Категория плагинов");
-  toolbar.append(search, category);
+  const addPackage = element("button", "Установить из ZIP…");
+  addPackage.id = "installPluginPackage";
+  addPackage.onclick = guard(async () => {
+    const value = await window.pywebview.api.choose_plugin_package();
+    if (!value) return;
+    const dialog = element("dialog", undefined, "plugin-settings-dialog");
+    dialog.setAttribute("aria-label", "Установка плагина");
+    const body = element("div", undefined, "plugin-settings-body");
+    body.append(
+      element("h2", value.name + " · " + value.version),
+      element(
+        "p",
+        "Плагин исполняет код внутри Studio. Устанавливайте пакеты только из доверенных источников.",
+      ),
+      element("p", "Возможности: " + value.permissions.join(", ")),
+    );
+    const confirm = element("button", "Установить пакет", "primary");
+    confirm.onclick = guard(async () => {
+      confirm.disabled = true;
+      try {
+        await window.pywebview.api.install_plugin_package();
+        dialog.close();
+        await refresh();
+      } finally {
+        confirm.disabled = false;
+      }
+    });
+    const cancel = element("button", "Отмена");
+    cancel.onclick = () => dialog.close();
+    body.append(confirm, cancel);
+    dialog.append(body);
+    document.body.append(dialog);
+    dialog.addEventListener("close", () => dialog.remove(), { once: true });
+    dialog.showModal();
+  });
+  toolbar.append(search, category, addPackage);
   const filters = element("div", undefined, "plugin-filters");
   filters.setAttribute("role", "group");
   filters.setAttribute("aria-label", "Фильтр плагинов");
@@ -135,8 +170,10 @@ const pluginsUi = (() => {
     configure.dataset.pluginConfigure = item.id;
     configure.onclick = guard(async () => {
       const current = items.find((x) => x.id === item.id);
-      const adapter = adapters.get(item.id);
-      if (!adapter) throw Error("Настройки этого плагина недоступны");
+      const adapter = adapters.get(item.id) || {
+        install: () => pluginHost.action(item.id, "install"),
+        configure: () => pluginHost.action(item.id, "configure"),
+      };
       if (!current.installed && !current.busy) await adapter.install();
       else await adapter.configure();
       await refresh();
@@ -144,10 +181,31 @@ const pluginsUi = (() => {
     const stop = element("button", "Остановить");
     stop.dataset.pluginStop = item.id;
     stop.onclick = guard(async () => {
-      await adapters.get(item.id)?.stop();
+      if (adapters.has(item.id)) await adapters.get(item.id).stop();
+      else await pluginHost.action(item.id, "stop");
       await refresh();
     });
-    actions.append(toggleLabel, configure, stop);
+    const updates = element("details");
+    updates.append(element("summary", "Версия и обновления"));
+    const version = element("p", undefined, "sub");
+    const updateStatus = element("p", undefined, "sub");
+    updateStatus.setAttribute("role", "status");
+    const check = element("button", "Проверить обновления");
+    check.dataset.pluginCheck = item.id;
+    check.onclick = () =>
+      operation(item.id, () =>
+        window.pywebview.api.check_plugin_updates(item.id),
+      );
+    const update = element("button", "Обновить плагин", "primary");
+    update.dataset.pluginUpdate = item.id;
+    update.onclick = () =>
+      operation(item.id, () => window.pywebview.api.update_plugin(item.id));
+    const rollback = element("button", "Вернуть предыдущую версию");
+    rollback.dataset.pluginRollback = item.id;
+    rollback.onclick = () =>
+      operation(item.id, () => window.pywebview.api.rollback_plugin(item.id));
+    updates.append(version, updateStatus, check, update, rollback);
+    actions.append(toggleLabel, configure, stop, updates);
     row.append(favorite, info, actions);
     return {
       row,
@@ -160,6 +218,11 @@ const pluginsUi = (() => {
       toggleText,
       configure,
       stop,
+      version,
+      updateStatus,
+      check,
+      update,
+      rollback,
     };
   }
   function updateRows() {
@@ -195,9 +258,28 @@ const pluginsUi = (() => {
         node.configure,
         !item.installed && !item.busy ? "Установить" : "Настроить",
       );
-      node.configure.disabled = pending.has(item.id) || !adapters.has(item.id);
+      node.configure.disabled =
+        pending.has(item.id) || (!adapters.has(item.id) && !item.ui_url);
       node.configure.classList.toggle("primary", !item.installed && !item.busy);
       node.stop.hidden = !item.busy;
+      setText(
+        node.version,
+        "Плагин " +
+          item.version +
+          (item.upstream_version
+            ? " · Hermes Agent " + item.upstream_version
+            : ""),
+      );
+      setText(
+        node.updateStatus,
+        item.update?.message || "Обновляется отдельно от Studio",
+      );
+      const updating = ["checking", "downloading"].includes(item.update?.phase);
+      node.check.disabled = pending.has(item.id) || updating;
+      node.update.hidden = item.update?.phase !== "available";
+      node.update.disabled = pending.has(item.id) || updating || item.busy;
+      node.rollback.hidden = !item.rollback_available;
+      node.rollback.disabled = pending.has(item.id) || updating || item.busy;
     }
   }
   function renderList() {
@@ -297,7 +379,10 @@ const pluginsUi = (() => {
     }
     await refresh();
     search.focus({ preventScroll: true });
-    if (identity) await adapters.get(identity)?.configure();
+    if (identity) {
+      if (adapters.has(identity)) await adapters.get(identity).configure();
+      else await pluginHost.action(identity, "configure");
+    }
   }
   entry.onclick = guard(() => open());
   search.oninput = category.onchange = renderList;

@@ -26,7 +26,9 @@ def main():
             archive.extractall(cache, filter="data")
     files = [
         str(p.relative_to(ROOT))
-        for p in (ROOT / "src" / "ui").iterdir()
+        for folder in [ROOT / "src" / "ui", ROOT / "plugins", ROOT / "examples/plugins"]
+        if folder.exists()
+        for p in folder.rglob("*")
         if p.suffix in {".js", ".html", ".css"}
     ]
     subprocess.run(
