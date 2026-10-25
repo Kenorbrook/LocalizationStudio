@@ -1,0 +1,23 @@
+{
+  "id": "renpy",
+  "name": "Ren’Py: локализация игры",
+  "version": "1.0.0",
+  "api_version": 1,
+  "min_app_version": "0.7.0",
+  "category": "Движки игр",
+  "description": "Подготовка слоя, локальный перевод и сборка отдельной копии игры с выбором языка",
+  "backend": "__init__.py",
+  "ui": "ui/entry.js",
+  "permissions": [
+    "backend",
+    "project.read",
+    "project.write",
+    "local.model",
+    "ui",
+    "game.copy",
+    "game.launch"
+  ],
+  "engines": [
+    "renpy"
+  ]
+}

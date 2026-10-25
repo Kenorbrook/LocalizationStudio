@@ -25,6 +25,7 @@ def main():
     parser.add_argument("--extensions", action="store_true")
     parser.add_argument("--state-only", action="store_true")
     parser.add_argument("--journey", action="store_true")
+    parser.add_argument("--renpy", action="store_true")
     args = parser.parse_args()
     parent = ROOT / "qa-knowledge"
     fixture = parent / ("hermes-" + uuid.uuid4().hex)
@@ -37,11 +38,19 @@ def main():
     (plugin_root / "installed.json").write_text(json.dumps({"commit": COMMIT}))
     game = fixture / "game"
     game.mkdir()
+    if args.renpy:
+        sys.path.insert(0, str(ROOT))
+        from tests.test_renpy_plugin import fake_game
+        from game_detection import inspect_project
+
+        fake_game(game)
     project = store.project(str(game))["id"] if args.screen != "empty" else None
     corpus = game / "text.json"
     corpus.write_text(json.dumps([{"source": "A neutral sentence."}]))
     if project:
         store.import_files(project, [corpus])
+        if args.renpy:
+            inspect_project(store, project)
     settings = {
         "model": "fixture-agent",
         "source_language": "English",
@@ -114,14 +123,33 @@ def main():
         )
     if args.journey:
         probe = ROOT / "tools/project_journey_probe.js"
+    if args.renpy:
+        copy = fixture / "copy"
+        copy.mkdir()
+        fake_game(copy)
+        child = store.project(str(copy))["id"]
+        inspect_project(store, child)
+        store.import_files(child, [corpus])
+        probe = fixture / "renpy-probe.js"
+        probe.write_text(
+            "window.__renpyWorkspace="
+            + str(child)
+            + ";\n"
+            + (ROOT / "tools/renpy_ui_probe.js").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
     name = (
         "v"
         + VERSION.replace(".", "")
         + "-plugin-"
         + (
-            "journey"
-            if args.journey
-            else "extensions" if args.extensions else args.screen or "catalog"
+            "renpy"
+            if args.renpy
+            else (
+                "journey"
+                if args.journey
+                else "extensions" if args.extensions else args.screen or "catalog"
+            )
         )
     )
     report = fixture / "probe.json"
@@ -147,8 +175,16 @@ def main():
                 raise RuntimeError("Neutral Hermes UI exited early")
             time.sleep(0.25)
         result = json.loads(report.read_text(encoding="utf-8"))
+        (ROOT / f"reports/{name}.json").write_text(
+            json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
         if result.get("passed"):
-            captured = inspect_app(store.path, not args.state_only)
+            captured = inspect_app(store.path, False)
+            if not args.state_only:
+                try:
+                    captured = inspect_app(store.path, True)
+                except RuntimeError as error:
+                    result["screenshot_error"] = str(error)
             image = captured.pop("image", None)
             if image:
                 (ROOT / f"reports/{name}.png").write_bytes(
@@ -173,7 +209,12 @@ def main():
             try:
                 shutil.rmtree(fixture)
                 break
-            except (PermissionError, FileNotFoundError):
+            except OSError as error:
+                if (
+                    not isinstance(error, (PermissionError, FileNotFoundError))
+                    and getattr(error, "winerror", None) != 145
+                ):
+                    raise
                 if not fixture.exists():
                     break
                 if attempt == 79:

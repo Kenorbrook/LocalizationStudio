@@ -37,5 +37,7 @@ jobs:
         run: |
           if ($env:GITHUB_REF_NAME -notmatch '^plugin-([a-z][a-z0-9-]*)-v') { throw 'Invalid plugin tag' }
           $pluginId = $Matches[1]
-          gh release create $env:GITHUB_REF_NAME "release/plugin-packages/$pluginId/$env:GITHUB_REF_NAME.zip" "release/plugin-packages/$pluginId/SHA256SUMS.txt" --title "$($pluginId) plugin $env:GITHUB_REF_NAME" --notes-file docs/PLUGIN_RELEASE_NOTES.md --verify-tag --latest=false
+          $notes = "plugins/$pluginId/RELEASE_NOTES.md"
+          if (-not (Test-Path -LiteralPath $notes)) { $notes = "docs/PLUGIN_RELEASE_NOTES.md" }
+          gh release create $env:GITHUB_REF_NAME "release/plugin-packages/$pluginId/$env:GITHUB_REF_NAME.zip" "release/plugin-packages/$pluginId/SHA256SUMS.txt" --title "$($pluginId) plugin $env:GITHUB_REF_NAME" --notes-file $notes --verify-tag --latest=false
           if ($LASTEXITCODE -ne 0) { throw 'Plugin publication failed' }

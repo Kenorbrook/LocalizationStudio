@@ -14,13 +14,15 @@ def parse(path, text):
     speaker = ""
     scene = "strings"
     old = None
+    reference_scene = None
     game = next((p for p in path.parents if p.name == "game"), None)
     native_scenes = source_scene_map(path) if "/tl/" not in path.as_posix() else {}
     for i, line in enumerate(lines):
         s = line.strip()
         match = SPAN.search(line)
         if s.startswith("translate "):
-            scene = s.rstrip(":")
+            scene = reference_scene or s.rstrip(":")
+            reference_scene = None
             source = old = None
         if s.startswith("label "):
             scene = s.rstrip(":")
@@ -31,6 +33,7 @@ def parse(path, text):
                 key = source_scene_map(original).get(int(reference[2]))
                 if key:
                     scene = dump(key)
+                    reference_scene = scene
         if native_scenes:
             scene = dump(native_scenes.get(i + 1, ("start", ())))
         if s.startswith("#") and match:
@@ -64,6 +67,8 @@ def parse(path, text):
         if not match or s.startswith(("#", "translate ", "old ", "new ")):
             continue
         prefix = s.split('"', 1)[0].strip()
+        if prefix.split(" ", 1)[0] in {"voice", "sound", "music", "play", "queue"}:
+            continue
         if source is not None and not s.startswith("$"):
             records.append(
                 dict(

@@ -21,7 +21,7 @@ void (async () => {
     };
     showView("home");await projectJourney.refresh();
     check("fourStageJourneyVisibleOnProjectHome",!$("projectHome").hidden&&$("projectJourney").querySelectorAll(".journey-step").length===4);
-    check("installationIsExplicitlyUnavailable",$("journeyStep-install").dataset.state==="blocked"&&$("journeyBoundary").textContent.includes("автоматической установки"));
+    check("installationIsExplicitlyUnavailable",$("journeyStep-install").dataset.state==="blocked"&&$("journeyBoundary").textContent.includes("модуль подготовки и сборки"));
     check("importDoesNotClaimWholeGameCoverage",$("journeyStep-files").textContent.includes("Полнота извлечения"));
     check("localPrerequisitesDoNotRequireAgentOrCloud",$("journeyModules").textContent.includes("не требуется плагин")&&$("journeyModules").textContent.includes("API-ключ"));
     check("untranslatedRowsDoNotOfferReview",$("journeyReview").disabled&&!$("journeyTranslate").disabled);

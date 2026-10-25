@@ -187,7 +187,7 @@ class RecordsRepository:
                     pass
 
     def mark(self, rid, revision, kind, origin="human"):
-        if origin not in {"human", "language"}:
+        if origin not in {"human", "language", "engine"}:
             raise ValueError("Некорректный источник пометки")
         if kind not in {"", "bad", "review"}:
             raise ValueError("Некорректная пометка")

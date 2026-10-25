@@ -47,6 +47,8 @@ def retry_errors(store, data):
 
 
 def job(store, data):
+    if getattr(store, "engine_mutation", None):
+        raise ValueError("Дождитесь подготовки или сборки копии игры")
     if getattr(store, "hermes_inference", False):
         raise ValueError("Сначала завершите или остановите работу Hermes")
     pid = int(data["project"])

@@ -60,11 +60,31 @@ def manifest(value):
         raise ValueError("Плагин требует другую версию Studio")
     if not isinstance(value.get("permissions"), list) or not set(
         value["permissions"]
-    ) <= {"ui", "theme", "backend", "project.read", "local.model"}:
+    ) <= {
+        "ui",
+        "theme",
+        "backend",
+        "project.read",
+        "project.write",
+        "local.model",
+        "game.copy",
+        "game.launch",
+    }:
         raise ValueError("Неизвестные разрешения плагина")
     for field in ["name", "description", "category"]:
         if not isinstance(value.get(field), str) or not 1 <= len(value[field]) <= 600:
             raise ValueError("Некорректное описание плагина")
+    engines = value.get("engines", [])
+    if (
+        not isinstance(engines, list)
+        or len(engines) > 16
+        or any(
+            not isinstance(engine, str)
+            or not re.fullmatch(r"[a-z][a-z0-9-]{0,31}", engine)
+            for engine in engines
+        )
+    ):
+        raise ValueError("Некорректный список движков плагина")
     for field in ["ui", "backend"]:
         if value.get(field):
             safe_path(value[field])

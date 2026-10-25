@@ -111,7 +111,7 @@ const projectJourney = (() => {
     ],
     [
       "Установка перевода",
-      "Готового установщика игрового перевода пока нет. Облачный API это ограничение не снимает.",
+      "Для поддерживаемых движков используется отдельный модуль подготовки и сборки. Его состояние показано на шаге 4. Облачный API для этого не нужен.",
     ],
     [
       "Плагины и облако",
@@ -402,7 +402,9 @@ const projectJourney = (() => {
       boundary,
       !exists
         ? "Откройте папку распакованной игры. Studio покажет доступные шаги и ограничения именно этого проекта."
-        : "Полный цикл пока недоступен: локальный перевод и редактура есть, автоматической установки в игру ещё нет.",
+        : state?.engine_module?.supported
+          ? "Модуль движка доступен. Подготовьте отдельную копию, пройдите локальный цикл и проверьте результат в игре."
+          : "Для полного цикла нужен модуль подготовки и сборки этого движка. Локальный перевод и редактура доступны для импортированных строк.",
     );
     if (!state) return;
     const engine = state.engine?.name || "Движок ещё не определён";
@@ -413,15 +415,18 @@ const projectJourney = (() => {
             countLabel(state.total, "строка", "строки", "строк")
         : "Текст ещё не добавлен",
       engine +
-        (state.pending_files.length
+        (!state.engine_module?.prepared && state.pending_files.length
           ? ` · найдено ещё файлов для импорта: ${state.pending_files.length}`
           : "") +
-        (state.archives
+        (!state.engine_module?.prepared && state.archives
           ? `\nАрхивов: ${state.archives}. Извлечение содержимого не реализовано.`
           : "") +
         (state.scan_partial ? "\nСканирование неполное." : "") +
-        "\nПолнота извлечения текста ещё не подтверждена.",
-      state.pending_files.length || state.scan_partial
+        (state.engine_module?.prepared
+          ? "\nИмпортирован штатный слой Ren’Py. Динамически создаваемый текст и надписи в изображениях требуют проверки в игре."
+          : "\nПолнота извлечения текста ещё не подтверждена."),
+      (!state.engine_module?.prepared && state.pending_files.length) ||
+        state.scan_partial
         ? "attention"
         : "available",
     );
@@ -446,14 +451,24 @@ const projectJourney = (() => {
     );
     step(
       "install",
-      "Пока не реализовано",
-      "Доступен только экспорт файла. Он не устанавливает перевод и не добавляет язык в игре.",
-      "blocked",
+      state.engine_module?.built
+        ? "Копия собрана"
+        : state.installation.available
+          ? "Доступен модуль движка"
+          : "Нет включённого модуля сборки",
+      state.installation.reason,
+      state.installation.available ? "available" : "blocked",
     );
     translate.disabled = !state.empty;
     review.disabled = !state.translated;
     exportFile.disabled = !state.files.length;
-    files.disabled = !exists;
+    files.disabled = !exists || !!state.engine_module?.prepared;
+    setText(
+      files,
+      state.engine_module?.prepared
+        ? "Слой подготовлен движком"
+        : "Открыть поиск и импорт",
+    );
     glossary.disabled = !exists;
     renderRun();
   }
@@ -478,6 +493,7 @@ const projectJourney = (() => {
     if (project !== studioState.project || own !== sequence) return;
     state = value;
     render();
+    studioLifecycle.notify("projectWorkflow", value);
   }
   studioLifecycle.register(
     "refresh",

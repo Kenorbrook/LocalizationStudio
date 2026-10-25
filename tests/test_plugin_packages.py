@@ -160,7 +160,7 @@ class PluginPackageTests(unittest.TestCase):
             self.manager.asset("sample-theme", generation, "ui/entry.js")
 
     def test_core_recovery_and_catalog_do_not_depend_on_hermes_presence(self):
-        self.manager.entries.pop("hermes")
+        self.manager.entries.clear()
         api = DesktopApi(None, None, manager=self.manager)
         self.assertEqual(api.get_plugins()["plugins"], [])
         self.assertFalse(api.get_recovery_state()["automatic_retry"])

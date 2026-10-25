@@ -49,6 +49,13 @@ def overview(store, project):
         for c in supported
         if str(Path(row["root"]) / c["path"]) not in imported
     ]
+    engine = report.get("engine") if report else None
+    extension = vars(store).get("engine_status")
+    engine_state = (
+        extension(project, engine.get("id") if engine else "unknown")
+        if extension
+        else None
+    )
     total = sum(counts.values())
     preserved = counts.get("preserved", 0)
     edited = counts.get("edited", 0) + counts.get("verified", 0)
@@ -67,9 +74,14 @@ def overview(store, project):
         "errors": errors,
         "manual_review": review,
         "jobs": jobs,
+        "engine_module": engine_state,
         "installation": {
-            "available": False,
-            "reason": "Автоматическая установка перевода в игру ещё не реализована. Экспорт сохраняет отдельный файл и не устанавливает перевод.",
+            "available": bool(engine_state and engine_state.get("supported")),
+            "reason": (
+                engine_state.get("reason")
+                if engine_state
+                else "Для этого движка нет включённого модуля подготовки и сборки. Экспорт сохраняет отдельный файл и не устанавливает перевод."
+            ),
         },
         "files": [
             {

@@ -12,12 +12,12 @@ void (async () => {
     for(const key of ["plugin_call","get_plugins","set_plugin_enabled","set_plugin_favorite","get_hermes_models","prepare_hermes_model","get_hermes_state"])real[key]=api[key];
     const hermesUi={refresh:()=>pluginHost.instance("hermes").refresh()};
     const commands={state:"get_hermes_state",models:"get_hermes_models",prepare_model:"prepare_hermes_model"};
-    api.plugin_call=(id,command,args)=>commands[command]?api[commands[command]](...args):real.plugin_call(id,command,args);
+    api.plugin_call=(id,command,args)=>id==="hermes"&&commands[command]?api[commands[command]](...args):real.plugin_call(id,command,args);
     let modelsOffline=false;
     const choices=[{name:"fixture-agent",size:1000,details:{parameter_size:"4B"}},{name:"fixture-other",size:2000,details:{parameter_size:"8B"}}];
     api.get_hermes_models=async()=>modelsOffline?{online:false,models:[],error:"Ollama недоступна. Запустите Ollama"}:{online:true,models:structuredClone(choices),error:""};
     const initial=await api.get_plugins();
-    check("installedPluginDisabledByDefault",initial.plugins.length===1&&initial.plugins[0].installed&&!initial.plugins[0].enabled);
+    check("installedPluginDisabledByDefault",initial.plugins.some(p=>p.id==="hermes"&&p.installed&&!p.enabled));
     check("pluginsRemovedFromGeneralSettings",!$("applicationPlugins")&&!$("projectAssistant"));
     await $("openPlugins").onclick();
     check("catalogOpensInMainArea",studioState.viewMode==="plugins"&&center.contains($("pluginsPane"))&&$("pluginsPane").getClientRects().length);
@@ -40,7 +40,7 @@ void (async () => {
     api.set_plugin_enabled=real.set_plugin_enabled;
     t.checked=true;await t.onchange();t.checked=false;await t.onchange();
     await document.querySelector('[data-plugin-favorite="hermes"]').onclick();
-    check("favoriteSavedThroughNativeBridge",(await api.get_plugins()).plugins[0].favorite);
+    check("favoriteSavedThroughNativeBridge",(await api.get_plugins()).plugins.find(p=>p.id==="hermes").favorite);
     filter("favorites").click();
     check("favoriteFilterWorks",$("pluginList").children.length===1);
     filter("all").click();
@@ -105,7 +105,7 @@ void (async () => {
     check("recoverySwitchesStayConsistent",!$("automaticErrorRetry").checked&&!(await api.get_hermes_state(studioState.project)).automatic_retry);
     $("recoverySettingsDialog").close();$("projectSettingsDialog").close();await wait(30);
     const actual=(await real.get_plugins()).plugins;
-    const fixtures=Array.from({length:99},(_,n)=>({id:"fixture-"+n,name:"Тестовый модуль "+String(n).padStart(3,"0"),description:n%3===0?"Извлечение текста":"Проверка качества",category:n%3===0?"Извлечение":"Проверка",version:"1.0",installed:true,enabled:n%2===0,busy:false,state:n%2===0?"enabled":"disabled",state_label:n%2===0?"Включён":"Отключён",can_toggle:true,favorite:n%10===0,attention:n%7===0,message:""}));
+    const fixtures=Array.from({length:98},(_,n)=>({id:"fixture-"+n,name:"Тестовый модуль "+String(n).padStart(3,"0"),description:n%3===0?"Извлечение текста":"Проверка качества",category:n%3===0?"Извлечение":"Проверка",version:"1.0",installed:true,enabled:n%2===0,busy:false,state:n%2===0?"enabled":"disabled",state_label:n%2===0?"Включён":"Отключён",can_toggle:true,favorite:n%10===0,attention:n%7===0,message:""}));
     for(const item of fixtures)pluginsUi.register(item.id,{configure:async()=>{},install:async()=>{},stop:async()=>{}});
     const catalog=[...actual,...fixtures];
     api.get_plugins=async()=>({plugins:structuredClone(catalog)});
@@ -136,7 +136,7 @@ void (async () => {
     const off=toggle("fixture-0");off.focus();off.checked=false;await off.onchange();
     check("quickSwitchFromFilteredListKeepsFocus",$("pluginList").children.length===49&&document.activeElement===$("pluginSearch"));
     filter("favorites").click();check("favoritesScaleTo100",$("pluginList").children.length===11);
-    filter("attention").click();check("attentionFilterWorks",$("pluginList").children.length===15);
+    filter("attention").click();check("attentionFilterWorks",$("pluginList").children.length===14);
     filter("all").click();
     center.scrollTop=650;
     const scroll=center.scrollTop,node=$("pluginList").firstChild;
@@ -150,10 +150,10 @@ void (async () => {
     check("returnRestoresSearchAndFilter",$("pluginSearch").value==="модуль 042"&&$("pluginList").children.length===1);
     for(const [key,value] of Object.entries(real))api[key]=value;
     $("pluginSearch").value="";filter("all").click();await pluginsUi.refresh();
-    for(let attempt=0;attempt<40&&($("pluginList").children.length!==1||toggle("hermes")?.checked);attempt++){await wait(100);await pluginsUi.refresh();}
+    for(let attempt=0;attempt<40&&($("pluginList").children.length!==actual.length||toggle("hermes")?.checked);attempt++){await wait(100);await pluginsUi.refresh();}
     center.scrollTop=0;
-    check("nativeCatalogRestored",$("pluginList").children.length===1&&!toggle("hermes").checked);
-    window.__featureProbe={passed:true,checks,scaleFixture:{plugins:100,realPlugins:1,syntheticPlugins:99},modelRequests:0};
+    check("nativeCatalogRestored",$("pluginList").children.length===actual.length&&!toggle("hermes").checked);
+    window.__featureProbe={passed:true,checks,scaleFixture:{plugins:100,realPlugins:2,syntheticPlugins:98},modelRequests:0};
   } catch(error) {
     for(const [key,value] of Object.entries(real))window.pywebview.api[key]=value;
     window.__featureProbe={passed:false,checks,error:error.message,stack:error.stack};

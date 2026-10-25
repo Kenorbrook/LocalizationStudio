@@ -17,6 +17,10 @@ const pluginHost = (() => {
     "project.overview": () =>
       $("projectHome").querySelector(".ux-overview-grid"),
     "project.errors.actions": () => errorsPane,
+    "project.workflow.files": () =>
+      $("journeyStep-files").querySelector(".journey-actions"),
+    "project.workflow.install": () =>
+      $("journeyStep-install").querySelector(".journey-actions"),
     ...Object.fromEntries(
       ["translation", "context", "files", "integrations", "advanced"].map(
         (key) => ["project.settings." + key, () => $("settingsPanel-" + key)],
@@ -64,6 +68,20 @@ const pluginHost = (() => {
         return disposed;
       },
       ui: {
+        openProject: async (project) => {
+          if (studioState.dirty.size)
+            throw Error("Сохраните или отмените правки");
+          await refresh();
+          $("projects").value = String(project);
+          if (+$("projects").value !== +project)
+            throw Error("Рабочий проект недоступен");
+          await $("projects").onchange();
+          showView("home");
+        },
+        settings: () => settings(),
+        request: (path, data) => request(path, data),
+        showView: (mode) => showView(mode),
+        refresh: () => refresh(),
         element,
         guard,
         setText,

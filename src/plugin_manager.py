@@ -188,6 +188,32 @@ class PluginManager:
             raise ValueError("Плагин не установлен")
         return self.entries[key]
 
+    def recover_startup(self):
+        for entry in self.entries.values():
+            recovery = getattr(entry["provider"], "recover_startup", None)
+            if recovery:
+                recovery()
+
+    def engine_status(self, project, engine):
+        with self.lock:
+            for key, entry in self.entries.items():
+                if (
+                    engine not in entry.get("engines", [])
+                    or not entry["provider"].summary()["enabled"]
+                ):
+                    continue
+                provider = entry["provider"]
+                if hasattr(provider, "workflow"):
+                    try:
+                        return {
+                            "plugin": key,
+                            "name": entry["name"],
+                            **provider.workflow(project),
+                        }
+                    except Exception as error:
+                        return {"plugin": key, "supported": False, "reason": str(error)}
+        return None
+
     @property
     def busy(self):
         # Do not acquire the catalog lock under the worker launch lock.

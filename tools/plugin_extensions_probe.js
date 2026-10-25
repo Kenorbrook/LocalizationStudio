@@ -42,7 +42,7 @@ void (async () => {
     check("packageUpdateReplacesOnlyItsUi",$("qaPluginNavigation").textContent.includes("1.0.1")&&getComputedStyle(document.querySelector("header")).backgroundColor==="rgb(60, 20, 90)"&&document.querySelectorAll("#qaPluginNavigation").length===1);
     check("updateKeepsEnabledAndOffersRollback",(await api.get_plugins()).plugins.some(p=>p.id==="qa-extension"&&p.enabled&&p.version==="1.0.1"&&p.rollback_available));
     await api.rollback_plugin("qa-extension");await sync();
-    check("rollbackRestoresPreviousUiWithoutRestart",$("qaPluginNavigation").textContent.includes("1.0.0")&&getComputedStyle(document.querySelector("header")).backgroundColor==="rgb(20, 60, 90)"&&/^0\.6\./.test((await api.get_update_state()).current));
+    check("rollbackRestoresPreviousUiWithoutRestart",$("qaPluginNavigation").textContent.includes("1.0.0")&&getComputedStyle(document.querySelector("header")).backgroundColor==="rgb(20, 60, 90)"&&/^0\.7\./.test((await api.get_update_state()).current));
     await toggle(false);
     await install(window.__extensionPackages[2]);
     await api.set_plugin_enabled("qa-broken",true);await sync();

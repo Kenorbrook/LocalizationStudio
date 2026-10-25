@@ -95,6 +95,8 @@ def main():
 
     plugins = PluginManager(store)
     updates.plugins = plugins
+    store.engine_status = plugins.engine_status
+    plugins.recover_startup()
     from app_inspection import AppInspection
 
     inspection = AppInspection(store.path)

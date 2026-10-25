@@ -22,6 +22,8 @@ def launch(store, jid):
     from contextlib import nullcontext
 
     with getattr(store, "launch_lock", nullcontext()):
+        if getattr(store, "engine_mutation", None):
+            raise ValueError("Дождитесь подготовки или сборки копии игры")
         if getattr(store, "hermes_inference", False):
             raise ValueError("Сначала завершите или остановите работу Hermes")
         if getattr(store, "closing", False):
