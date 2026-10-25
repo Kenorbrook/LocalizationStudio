@@ -1,0 +1,58 @@
+(async () => {
+  const checks = {};
+  const check = (name, value) => { checks[name] = !!value; if(!value) throw Error(name); };
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  try {
+    for(let i=0;i<150 && !studioState.project;i++) await wait(40);
+    await refresh();
+    const original = await window.pywebview.api.get_hermes_state(studioState.project);
+    check("pluginDisabledByDefault", !original.preferences.enabled && !original.installed && !original.automatic_retry);
+    $("appSettings").click();
+    $("applicationPlugins").open = true;
+    await hermesUi.refresh(true);
+    check("pluginLivesInAppSettings", $("updatesDialog").contains($("hermesPlugin")));
+    $("hermesEnabled").checked = true;
+    $("hermesEnabled").dispatchEvent(new Event("input"));
+    $("hermesModel").value = "fixture-agent";
+    $("hermesContext").value = 65536;
+    await $("saveHermes").onclick();
+    const saved = await window.pywebview.api.get_hermes_state();
+    check("nativePreferencesSaved", saved.preferences.enabled && saved.preferences.model === "fixture-agent" && saved.preferences.context === 65536);
+    check("contextRequirementVisible", $("hermesContext").min === "64000");
+    let rejected = false;
+    try { await window.pywebview.api.configure_hermes({...saved.preferences, context:8192}); } catch(error) {rejected = true;}
+    check("unsupportedSmallContextRejected", rejected);
+    $("hermesModel").value = "unsaved";
+    $("hermesModel").dispatchEvent(new Event("input"));
+    $("hermesModel").focus();
+    $("hermesModel").setSelectionRange(2,4);
+    await hermesUi.refresh();
+    check("pollKeepsSettingsDraftAndFocus", $("hermesModel").value === "unsaved" && document.activeElement === $("hermesModel") && $("hermesModel").selectionStart === 2);
+    $("cancelHermesSettings").click();
+    check("cancelRestoresSavedPreferences", $("hermesModel").value === "fixture-agent");
+    const install = window.pywebview.api.install_hermes;
+    let installs = 0;
+    window.pywebview.api.install_hermes = async () => { installs++; return {...saved, busy:true, phase:"installing", message:"Fixture download"}; };
+    await $("installHermes").onclick();
+    check("downloadButtonWiredAndBusy", installs === 1 && $("saveHermes").disabled && !$("stopHermes").hidden);
+    window.pywebview.api.install_hermes = install;
+    await hermesUi.refresh(true);
+    $("updatesDialog").close();
+    await $("projectAssistant").onclick();
+    check("projectAssistantHasOwnDialog", $("hermesProjectDialog").open);
+    check("agentCannotRunBeforeInstallation", $("hermesResearch").disabled);
+    $("automaticErrorRetry").checked = true;
+    await $("automaticErrorRetry").onchange();
+    const project = await window.pywebview.api.get_hermes_state(studioState.project);
+    check("projectRecoveryOptInSaved", project.automatic_retry);
+    check("oomPlanUsesSmallerContext", project.retry_plan.rows.length === 1 && project.retry_plan.rows[0].parameters.context === 4096);
+    check("retryPlanVisible", $("smartRetryPlan").textContent.includes("4096") && !$("startSmartRetry").disabled);
+    check("noWorkerStartedByPlanning", (await request("state?project="+studioState.project)).jobs.every(job => job.state !== "running" && job.state !== "queued"));
+    $("automaticErrorRetry").checked = false;
+    await $("automaticErrorRetry").onchange();
+    check("automaticRecoveryCanBeDisabled", !(await window.pywebview.api.get_hermes_state(studioState.project)).automatic_retry);
+    $("hermesConnectionSettings").click();
+    check("connectionLinkOpensPlugin", $("updatesDialog").open && $("applicationPlugins").open && !$("hermesProjectDialog").open);
+    window.__featureProbe = {passed:true,checks};
+  } catch(error) {window.__featureProbe={passed:false,checks,error:error.message,stack:error.stack};}
+})();

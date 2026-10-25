@@ -267,7 +267,10 @@ def analyze(root, max_files=100000, max_seconds=15, max_candidates=3000, max_dep
                             "Сканирование ограничено по времени/числу файлов; отчёт неполный"
                         )
                         break
-                    if entry.is_symlink():
+                    if (
+                        entry.is_symlink()
+                        or getattr(Path(entry.path), "is_junction", lambda: False)()
+                    ):
                         continue
                     try:
                         stat = entry.stat(follow_symlinks=False)

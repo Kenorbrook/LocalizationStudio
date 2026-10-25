@@ -55,7 +55,7 @@ def schedule(store, pid):
 
 
 def _schedule(store, pid):
-    if getattr(store, "closing", False):
+    if getattr(store, "closing", False) or getattr(store, "hermes_inference", False):
         return None
     with store.db() as db:
         db.execute("BEGIN IMMEDIATE")

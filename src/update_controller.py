@@ -166,6 +166,8 @@ class UpdateController:
         return self._launch("downloading", action)
 
     def idle(self):
+        if getattr(self.store, "hermes_busy", False):
+            return False
         with self.store.db() as db:
             active = db.execute(
                 "SELECT 1 FROM jobs WHERE state IN ('running','queued') OR worker_active=1 LIMIT 1"
@@ -182,6 +184,8 @@ class UpdateController:
         )
 
     def install(self):
+        if getattr(self.store, "hermes_busy", False):
+            raise ValueError("Сначала остановите работу плагина Hermes")
         if self.state["phase"] != "ready" or not self.session:
             raise ValueError("Сначала скачайте обновление")
 

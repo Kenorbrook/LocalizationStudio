@@ -125,3 +125,13 @@ def watch_worker(store, jid, process, launch_token=None):
             "UPDATE mcp_requests SET state='failed',response='Обработчик завершился; запрос прекращён' WHERE job=? AND state IN ('pending','sent')",
             (jid,),
         )
+    if code == 0 and target == "incomplete":
+        from error_recovery import after_job
+
+        try:
+            after_job(store, jid)
+        except Exception:
+            # The original errors and completed queue remain available for manual retry.
+            import logging
+
+            logging.exception("Не удалось подготовить автоматический повтор ошибок")

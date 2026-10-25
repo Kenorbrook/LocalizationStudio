@@ -29,6 +29,8 @@ def initialize(db):
     CREATE TABLE IF NOT EXISTS cache_owners(project INTEGER,key TEXT,PRIMARY KEY(project,key));
     CREATE TABLE IF NOT EXISTS id_counters(name TEXT PRIMARY KEY,next_id INTEGER);
     CREATE TABLE IF NOT EXISTS schema_versions(name TEXT PRIMARY KEY);
+    CREATE TABLE IF NOT EXISTS recovery_preferences(project INTEGER PRIMARY KEY,enabled INTEGER DEFAULT 0);
+    CREATE TABLE IF NOT EXISTS recovery_jobs(parent INTEGER,record INTEGER,job INTEGER,reason TEXT,PRIMARY KEY(parent,record));
     CREATE TABLE IF NOT EXISTS verification_snapshots(record INTEGER,revision INTEGER,before_status TEXT,mark_json TEXT DEFAULT '{}',PRIMARY KEY(record,revision),FOREIGN KEY(record) REFERENCES records(id) ON DELETE CASCADE);
     CREATE TABLE IF NOT EXISTS record_marks(record INTEGER PRIMARY KEY,kind TEXT,at REAL,was_manual INTEGER,protected_revision INTEGER);
     CREATE TABLE IF NOT EXISTS knowledge_batches(key TEXT PRIMARY KEY,project INTEGER,result TEXT,at TEXT);

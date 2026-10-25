@@ -244,6 +244,10 @@ def call(store, name, args):
 
 
 def handle(store, request):
+    agent_project = vars(store).get("agent_project")
+    agent_project = (
+        agent_project if type(agent_project) is int and agent_project > 0 else None
+    )
     method = request.get("method")
     rid = request.get("id")
     params = request.get("params", {})
@@ -277,10 +281,22 @@ def handle(store, request):
         elif method == "ping":
             result = {}
         elif method == "tools/list":
-            result = {"tools": TOOLS}
+            from hermes_tools import TOOLS as AGENT_TOOLS
+
+            result = {"tools": AGENT_TOOLS if agent_project else TOOLS}
         elif method == "tools/call":
             try:
-                value = call(store, params["name"], params.get("arguments", {}))
+                if agent_project:
+                    from hermes_tools import call as agent_call
+
+                    value = agent_call(
+                        store,
+                        agent_project,
+                        params["name"],
+                        params.get("arguments", {}),
+                    )
+                else:
+                    value = call(store, params["name"], params.get("arguments", {}))
                 picture = (
                     value.pop("image", None)
                     if params["name"] == "app_screenshot"

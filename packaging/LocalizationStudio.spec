@@ -12,6 +12,7 @@ a = Analysis(
     binaries=[],
     datas=[
         (str(base / "ui"), "ui"),
+        (str(base / "plugin_resources"), "plugin_resources"),
         (str(project / "docs/TRANSLATION_POLICY.md"), "."),
         (
             str(base / "translation_tools/local_literary_profile.json"),

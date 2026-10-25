@@ -109,6 +109,10 @@ class ProjectsRepository:
                 (pid,),
             )
             db.execute(
+                "DELETE FROM recovery_jobs WHERE parent IN (SELECT id FROM jobs WHERE project=?) OR job IN (SELECT id FROM jobs WHERE project=?)",
+                (pid, pid),
+            )
+            db.execute(
                 "DELETE FROM queue WHERE job IN (SELECT id FROM jobs WHERE project=?)",
                 (pid,),
             )
@@ -131,6 +135,7 @@ class ProjectsRepository:
                 "knowledge_items",
                 "knowledge_batches",
                 "process_preferences",
+                "recovery_preferences",
             ]:
                 db.execute(f"DELETE FROM {table} WHERE project=?", (pid,))
             db.execute("DELETE FROM projects WHERE id=?", (pid,))

@@ -47,6 +47,8 @@ def retry_errors(store, data):
 
 
 def job(store, data):
+    if getattr(store, "hermes_inference", False):
+        raise ValueError("Сначала завершите или остановите работу Hermes")
     pid = int(data["project"])
     settings = data["settings"]
     with store.db() as db:
@@ -116,6 +118,8 @@ def job(store, data):
 
 
 def control(store, data):
+    if data.get("mode") == "resume" and getattr(store, "hermes_inference", False):
+        raise ValueError("Сначала завершите или остановите работу Hermes")
     from worker_supervision import recover_workers
 
     recover_workers(store)

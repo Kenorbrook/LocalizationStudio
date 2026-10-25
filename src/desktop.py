@@ -15,6 +15,7 @@ def main():
     parser.add_argument("--db", default=str(DEFAULT_DB))
     parser.add_argument("--worker", type=int)
     parser.add_argument("--mcp", action="store_true")
+    parser.add_argument("--agent-project", type=int)
     parser.add_argument("--inspect", choices=["state", "screenshot"])
     parser.add_argument("--output")
     parser.add_argument(
@@ -26,6 +27,8 @@ def main():
     parser.add_argument("--ui-test-script")
     parser.add_argument("--resume-update")
     args = parser.parse_args()
+    if args.agent_project is not None and (not args.mcp or args.agent_project <= 0):
+        parser.error("--agent-project требует --mcp и положительный номер проекта")
     if args.inspect:
         from inspection_client import cli_main
 
@@ -39,6 +42,11 @@ def main():
     if args.mcp:
         from mcp_server import serve_stdio
 
+        if args.agent_project:
+            from hermes_tools import project_root
+
+            project_root(store, args.agent_project)
+            store.agent_project = args.agent_project
         serve_stdio(store)
         return
     # Never start two desktop windows against the same workspace.
@@ -80,6 +88,9 @@ def main():
 
     close_controller = CloseController(store)
     updates = UpdateController(store, close_controller)
+    from hermes_plugin import HermesPlugin
+
+    hermes = HermesPlugin(store)
     from app_inspection import AppInspection
 
     inspection = AppInspection(store.path)
@@ -117,7 +128,7 @@ def main():
         hidden=args.hidden,
         focus=not args.hidden,
         background_color="#11171b",
-        js_api=DesktopApi(close_controller, updates),
+        js_api=DesktopApi(close_controller, updates, hermes),
     )
     close_controller.window = window
     inspection.window = window
@@ -208,6 +219,7 @@ def main():
         )
     finally:
         inspection.dispose()
+        hermes.dispose()
         updates.dispose()
         close_controller.dispose()
         server.shutdown()

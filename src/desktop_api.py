@@ -7,9 +7,34 @@ from version import REPOSITORY
 
 
 class DesktopApi(CloseApi):
-    def __init__(self, closer, updates):
+    def __init__(self, closer, updates, hermes=None):
         super().__init__(closer)
         self._updates = updates
+        self._hermes = hermes
+
+    def get_hermes_state(self, project=0):
+        return self._hermes.snapshot(int(project))
+
+    def configure_hermes(self, values):
+        return self._hermes.configure(values)
+
+    def install_hermes(self):
+        return self._hermes.install()
+
+    def check_hermes(self):
+        return self._hermes.check()
+
+    def cancel_hermes(self):
+        return self._hermes.cancel()
+
+    def run_hermes(self, project, mode):
+        return self._hermes.run(int(project), mode)
+
+    def set_automatic_retry(self, project, enabled):
+        return self._hermes.recovery(int(project), enabled=enabled)
+
+    def start_smart_retry(self, project):
+        return self._hermes.recovery(int(project), start=True)
 
     def get_update_state(self):
         return self._updates.snapshot()
