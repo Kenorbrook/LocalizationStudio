@@ -3,7 +3,11 @@ const hermesUi = (() => {
   let state = null,
     editing = false,
     sequence = 0,
-    recoveryPending = false;
+    recoveryPending = false,
+    inventory = [],
+    modelsOnline = false,
+    modelsLoading = false,
+    ownPreparation = false;
   const recoveryViews = [];
   function button(id, text, parent, action, className) {
     const node = element("button", text, className);
@@ -33,13 +37,19 @@ const hermesUi = (() => {
   settingsStatus.setAttribute("role", "status");
   const modelLabel = element("label", "Модель Ollama");
   modelLabel.htmlFor = "hermesModel";
-  const model = element("input");
+  const model = element("select");
   model.id = "hermesModel";
-  model.placeholder = "Выберите установленную модель";
-  model.setAttribute("list", "hermesModels");
-  const modelList = element("datalist");
-  modelList.id = "hermesModels";
-  modelLabel.append(model, modelList);
+  modelLabel.append(model);
+  const modelAvailability = element("p", undefined, "sub");
+  modelAvailability.id = "hermesModelsStatus";
+  modelAvailability.setAttribute("role", "status");
+  const modelActions = element("div", undefined, "plugin-task-actions");
+  const reloadModels = button(
+    "refreshHermesModels",
+    "Обновить список моделей",
+    modelActions,
+    () => loadModels(),
+  );
   const requirement = element(
     "p",
     "Нужна модель с инструментами и контекстом от 64 000 токенов.",
@@ -64,6 +74,34 @@ const hermesUi = (() => {
   contextLabel.append(context);
   advanced.append(contextLabel);
   const actions = element("div", undefined, "plugin-task-actions");
+  const prepareModel = button(
+    "prepareHermesModel",
+    "Подготовить для Hermes",
+    actions,
+    async () => {
+      const selected = model.value,
+        tokens = +context.value;
+      ownPreparation = true;
+      try {
+        await window.pywebview.api.prepare_hermes_model(selected, tokens);
+        await refresh();
+        await pluginsUi.refresh();
+      } catch (error) {
+        ownPreparation = false;
+        throw error;
+      }
+    },
+    "primary",
+  );
+  const preparationStatus = element("p", undefined, "sub");
+  preparationStatus.id = "hermesPreparationStatus";
+  preparationStatus.setAttribute("role", "status");
+  prepareModel.after(
+    workspaceUi.help(
+      "Создаёт отдельный профиль из выбранной установленной модели, задаёт указанный контекст в Ollama и сохраняет выбор для Hermes. Веса не скачиваются повторно. Исходная модель и настройки перевода не меняются. Это не проверка размещения модели в памяти.",
+      "О подготовке модели",
+    ),
+  );
   const install = button(
     "installHermes",
     "Скачать и установить",
@@ -97,32 +135,29 @@ const hermesUi = (() => {
   settings.body.append(
     settingsStatus,
     modelLabel,
+    modelAvailability,
+    modelActions,
     requirement,
     advanced,
     actions,
+    preparationStatus,
     logDetails,
   );
   const footer = element("div", undefined, "plugin-settings-footer");
-  button("cancelHermesSettings", "Отмена", footer, () =>
+  const cancelSettings = button("cancelHermesSettings", "Закрыть", footer, () =>
     settings.dialog.close(),
   );
-  const save = button(
-    "saveHermes",
-    "Сохранить параметры",
-    footer,
-    async () => {
-      await window.pywebview.api.configure_plugin("hermes", {
-        model: model.value.trim(),
-        context: +context.value,
-      });
-      editing = false;
-      await refresh(true);
-      await pluginsUi.refresh();
-      settings.dialog.close();
-      toast("Параметры Hermes сохранены");
-    },
-    "primary",
-  );
+  const save = button("saveHermes", "Сохранить параметры", footer, async () => {
+    await window.pywebview.api.configure_plugin("hermes", {
+      model: model.value.trim(),
+      context: +context.value,
+    });
+    editing = false;
+    await refresh(true);
+    await pluginsUi.refresh();
+    settings.dialog.close();
+    toast("Параметры Hermes сохранены");
+  });
   settings.dialog.append(footer);
   for (const input of [model, context])
     input.oninput = () => {
@@ -137,17 +172,73 @@ const hermesUi = (() => {
     await refresh(true);
     if (!settings.dialog.open) settings.dialog.showModal();
     model.focus({ preventScroll: true });
-    request("models")
-      .then((data) =>
-        modelList.replaceChildren(
-          ...(data.models || []).map((name) => {
-            const option = element("option");
-            option.value = name;
-            return option;
-          }),
-        ),
-      )
-      .catch(() => {});
+    await loadModels();
+  }
+  function selectModel(value) {
+    if (value && ![...model.options].some((option) => option.value === value)) {
+      const option = element(
+        "option",
+        value + (modelsOnline ? " — не найдена" : " — сохранённая модель"),
+      );
+      option.value = value;
+      model.append(option);
+    }
+    model.value = value;
+  }
+  async function loadModels() {
+    if (modelsLoading) return;
+    modelsLoading = true;
+    reloadModels.disabled = true;
+    setText(modelAvailability, "Читаем установленные модели Ollama…");
+    render();
+    try {
+      const result = await window.pywebview.api.get_hermes_models();
+      modelsOnline = !!result.online;
+      inventory = result.models || [];
+      const selected = model.value || state?.preferences.model || "";
+      const placeholder = element(
+        "option",
+        modelsOnline
+          ? inventory.length
+            ? "Выберите установленную модель"
+            : "Нет установленных моделей"
+          : "Ollama недоступна",
+      );
+      placeholder.value = "";
+      model.replaceChildren(
+        placeholder,
+        ...inventory.map((item) => {
+          const size = item.size
+            ? ` · ${(item.size / 1000000000).toLocaleString("ru", { maximumFractionDigits: 1 })} ГБ`
+            : "";
+          const option = element(
+            "option",
+            item.name +
+              (item.details?.parameter_size
+                ? " · " + item.details.parameter_size
+                : "") +
+              size,
+          );
+          option.value = item.name;
+          return option;
+        }),
+      );
+      selectModel(selected);
+      setText(
+        modelAvailability,
+        result.error ||
+          (inventory.length
+            ? "Установлено моделей: " + inventory.length
+            : "Сначала установите модель в Ollama, затем обновите список"),
+      );
+    } catch (error) {
+      modelsOnline = false;
+      setText(modelAvailability, error.message);
+    } finally {
+      modelsLoading = false;
+      reloadModels.disabled = false;
+      render();
+    }
   }
   pluginsUi.register("hermes", {
     configure: openSettings,
@@ -375,7 +466,7 @@ const hermesUi = (() => {
       fill ||
       (!editing && ![model, context].includes(document.activeElement))
     ) {
-      model.value = state.preferences.model;
+      selectModel(state.preferences.model);
       context.value = state.preferences.context;
     }
     const ready = reason();
@@ -393,8 +484,30 @@ const hermesUi = (() => {
           : "Настроить Hermes",
       );
     for (const input of [model, context, save]) input.disabled = state.busy;
+    setText(cancelSettings, state.busy || !editing ? "Закрыть" : "Отмена");
     install.hidden = state.installed;
     install.disabled = state.busy;
+    prepareModel.disabled =
+      state.busy ||
+      modelsLoading ||
+      !modelsOnline ||
+      !inventory.some((item) => item.name === model.value) ||
+      !context.checkValidity();
+    setText(
+      prepareModel,
+      "Подготовить для Hermes · " +
+        (+context.value || 0).toLocaleString("ru") +
+        " токенов",
+    );
+    setText(
+      preparationStatus,
+      state.phase === "preparing" || state.phase === "error"
+        ? state.message
+        : state.model_profile
+          ? `Профиль: ${state.model_profile.model} · ${state.model_profile.context.toLocaleString("ru")} токенов. Выбор сохранён.`
+          : "",
+    );
+    preparationStatus.hidden = !preparationStatus.textContent;
     check.disabled =
       state.busy || !state.installed || !state.preferences.model || editing;
     check.title = editing ? "Сначала сохраните параметры модели" : "";
@@ -445,6 +558,14 @@ const hermesUi = (() => {
     const value = await window.pywebview.api.get_hermes_state(project);
     if (current !== sequence || project !== studioState.project) return;
     state = value;
+    if (ownPreparation && !value.busy) {
+      ownPreparation = false;
+      if (value.phase === "ready") {
+        editing = false;
+        render(true);
+        await loadModels();
+      }
+    }
     render(fill);
   }
   studioLifecycle.register(

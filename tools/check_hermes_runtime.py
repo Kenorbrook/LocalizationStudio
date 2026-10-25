@@ -126,6 +126,12 @@ def exercise(plugin, store):
                     {"id": "fixture-agent", "object": "model", "owned_by": "local"}
                 ],
             }
+            if self.path == "/api/tags":
+                data = {
+                    "models": [
+                        {"name": "fixture-agent", "size": 1000, "digest": "fixture"}
+                    ]
+                }
             self.respond(data)
 
         def do_POST(self):
@@ -136,6 +142,7 @@ def exercise(plugin, store):
                 return self.respond(
                     {
                         "capabilities": ["tools"],
+                        "parameters": "num_ctx 65536",
                         "model_info": {"llama.context_length": 65536},
                     }
                 )
@@ -237,6 +244,9 @@ def exercise(plugin, store):
     plugin.configure({"enabled": True, "model": "fixture-agent", "context": 65536})
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
     threading.Thread(target=server.serve_forever, daemon=True).start()
+    from hermes_models import HermesModels
+
+    plugin.models = HermesModels(f"http://127.0.0.1:{server.server_port}")
     original = plugin._request
     plugin._request = lambda payload: original(
         {**payload, "base_url": f"http://127.0.0.1:{server.server_port}/v1"}

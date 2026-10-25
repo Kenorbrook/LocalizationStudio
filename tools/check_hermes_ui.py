@@ -63,7 +63,7 @@ def main():
             + (ROOT / "tools/plugin_screen_probe.js").read_text(encoding="utf-8"),
             encoding="utf-8",
         )
-    name = "v051-plugin-" + (args.screen or "catalog")
+    name = "v052-plugin-" + (args.screen or "catalog")
     report = fixture / "probe.json"
     gui = subprocess.Popen(
         [

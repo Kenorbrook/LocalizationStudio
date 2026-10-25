@@ -32,6 +32,9 @@ class HermesPlugin:
         self.cancelled = threading.Event()
         self.process = None
         self.busy = False
+        from hermes_models import HermesModels
+
+        self.models = HermesModels()
         self.preferences = {"enabled": False, "model": "", "context": 65536}
         self.status = {"phase": "idle", "message": "Hermes не подключён", "report": ""}
         try:
@@ -155,6 +158,7 @@ class HermesPlugin:
                 label = {
                     "installing": "Устанавливается",
                     "checking": "Проверяется",
+                    "preparing": "Подготовка модели",
                 }.get(
                     self.status["phase"],
                     "Работает" if enabled else "Отключён · завершает работу",
@@ -218,11 +222,11 @@ class HermesPlugin:
             try:
                 guard_root(self.root)
                 self.root.mkdir(parents=True, exist_ok=True)
-                action()
+                message = action()
                 if self.cancelled.is_set():
                     self._set(phase="idle", message="Работа Hermes остановлена")
                 else:
-                    self._set(phase="ready", message="Готово")
+                    self._set(phase="ready", message=message or "Готово")
             except Exception as error:
                 self._set(
                     phase="idle" if self.cancelled.is_set() else "error",
@@ -297,43 +301,42 @@ class HermesPlugin:
     def _check_runtime(self):
         return self._request({"check": True})
 
+    def prepare_model(self, model, context):
+        self.validate({"enabled": False, "model": model, "context": context})
+
+        def action():
+            result = self.models.prepare(
+                self.root,
+                model,
+                context,
+                self.cancelled,
+                lambda message: self._set(message=message),
+            )
+            with self.lock:
+                if self.cancelled.is_set():
+                    return
+                self._persist(
+                    {
+                        **self.preferences,
+                        "model": result["model"],
+                        "context": result["context"],
+                    }
+                )
+                self.status["model_profile"] = result
+            return (
+                "Модель подготовлена: " + result["model"] + ", контекст " + str(context)
+            )
+
+        return self._launch("preparing", action)
+
     def check(self):
         def action():
             if not self.installed():
                 raise ValueError("Сначала установите Hermes")
-            self._check_runtime()
-            if not self.preferences["model"]:
-                raise ValueError("Выберите локальную модель Hermes")
-            from providers import DIRECT
-
-            with DIRECT.open("http://127.0.0.1:11434/api/tags", timeout=10) as response:
-                models = json.load(response).get("models", [])
-            if not any(
-                model.get("name") == self.preferences["model"] for model in models
-            ):
-                raise ValueError("Выбранная модель не найдена в Ollama")
-            from urllib.request import Request
-
-            request = Request(
-                "http://127.0.0.1:11434/api/show",
-                data=json.dumps({"model": self.preferences["model"]}).encode(),
-                headers={"Content-Type": "application/json"},
+            self.models.validate(
+                self.preferences["model"], self.preferences["context"], configured=True
             )
-            with DIRECT.open(request, timeout=10) as response:
-                details = json.load(response)
-            if details.get("capabilities") and "tools" not in details["capabilities"]:
-                raise ValueError(
-                    "Эта модель не поддерживает вызов инструментов; выберите другую модель Ollama"
-                )
-            windows = [
-                value
-                for key, value in details.get("model_info", {}).items()
-                if key.endswith(".context_length") and type(value) is int
-            ]
-            if windows and max(windows) < self.preferences["context"]:
-                raise ValueError(
-                    "Контекст модели меньше выбранного контекста Hermes; выберите совместимую модель"
-                )
+            self._check_runtime()
             self._set(
                 report="Hermes и Ollama доступны. Способность модели вызывать инструменты проверяется при исследовании проекта."
             )
@@ -358,6 +361,9 @@ class HermesPlugin:
                 )
 
         def action():
+            self.models.validate(
+                self.preferences["model"], self.preferences["context"], configured=True
+            )
             self._set(message="Hermes исследует проект…", project=project)
             if getattr(sys, "frozen", False):
                 command, args = str(APP_HOME / "LocalizationWorker.exe"), []
@@ -428,6 +434,8 @@ class HermesPlugin:
     def cancel(self):
         with self.lock:
             self.cancelled.set()
+            if self.busy:
+                self.status["message"] = "Останавливаем работу Hermes…"
             process = self.process
         stop_owned(process)
         return self.snapshot()

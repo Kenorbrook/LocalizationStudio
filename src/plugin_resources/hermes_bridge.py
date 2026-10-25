@@ -38,7 +38,6 @@ else:
         run_budget_seconds=240,
         request_overrides={
             "max_tokens": 1600,
-            "extra_body": {"options": {"num_ctx": request["context"]}},
         },
     )
     try:

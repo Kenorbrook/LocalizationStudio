@@ -206,7 +206,8 @@ body .plugin-switch input {
   display: block;
   margin: 0 0 16px;
 }
-.plugin-settings-body label > input {
+.plugin-settings-body label > input,
+.plugin-settings-body label > select {
   display: block;
   margin: 7px 0 0;
   width: 100%;

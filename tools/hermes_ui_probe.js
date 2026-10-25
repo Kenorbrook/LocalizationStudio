@@ -9,7 +9,10 @@
     for(let n=0;n<150&&!studioState.project;n++)await wait(40);
     await refresh();
     const api=window.pywebview.api;
-    for(const key of ["get_plugins","set_plugin_enabled","set_plugin_favorite"])real[key]=api[key];
+    for(const key of ["get_plugins","set_plugin_enabled","set_plugin_favorite","get_hermes_models","prepare_hermes_model","get_hermes_state"])real[key]=api[key];
+    let modelsOffline=false;
+    const choices=[{name:"fixture-agent",size:1000,details:{parameter_size:"4B"}},{name:"fixture-other",size:2000,details:{parameter_size:"8B"}}];
+    api.get_hermes_models=async()=>modelsOffline?{online:false,models:[],error:"Ollama недоступна. Запустите Ollama"}:{online:true,models:structuredClone(choices),error:""};
     const initial=await api.get_plugins();
     check("installedPluginDisabledByDefault",initial.plugins.length===1&&initial.plugins[0].installed&&!initial.plugins[0].enabled);
     check("pluginsRemovedFromGeneralSettings",!$("applicationPlugins")&&!$("projectAssistant"));
@@ -42,12 +45,29 @@
     const saved=await api.get_hermes_state();
     check("modelSaveDoesNotReenablePlugin",saved.preferences.model==="fixture-agent"&&!saved.preferences.enabled&&!$("hermesSettingsDialog").open);
     await document.querySelector('[data-plugin-configure="hermes"]').onclick();
-    $("hermesModel").value="unsaved";$("hermesModel").dispatchEvent(new Event("input"));$("hermesModel").focus();$("hermesModel").setSelectionRange(2,4);
+    $("hermesModel").value="fixture-other";$("hermesModel").dispatchEvent(new Event("input"));$("hermesModel").focus();
     await hermesUi.refresh();
-    check("pollKeepsModelDraftAndFocus",$("hermesModel").value==="unsaved"&&document.activeElement===$("hermesModel")&&$("hermesModel").selectionStart===2);
+    check("pollKeepsModelDraftAndFocus",$("hermesModel").value==="fixture-other"&&document.activeElement===$("hermesModel"));
     $("cancelHermesSettings").click();await wait(30);
     await document.querySelector('[data-plugin-configure="hermes"]').onclick();
     check("cancelRestoresSavedParameters",$("hermesModel").value==="fixture-agent");
+    check("installedModelsAreExplicitSelect",$("hermesModel").tagName==="SELECT"&&[...$("hermesModel").options].some(option=>option.value==="fixture-other"));
+    modelsOffline=true;await $("refreshHermesModels").onclick();
+    check("offlineModelListExplainsAndBlocksPreparation",$("hermesModelsStatus").textContent.includes("Запустите Ollama")&&$("prepareHermesModel").disabled&&(await api.get_hermes_state()).preferences.model==="fixture-agent");
+    modelsOffline=false;await $("refreshHermesModels").onclick();
+    let preparePhase=null,prepareArguments=null;
+    api.get_hermes_state=async(project=0)=>{const value=await real.get_hermes_state(project);return preparePhase?{...value,busy:preparePhase==="preparing",phase:preparePhase,model_profile:preparePhase==="ready"?{model:"studio-hermes-fixture:latest",source:"fixture-agent",context:98304}:undefined}:value;};
+    api.prepare_hermes_model=async(name,context)=>{prepareArguments={name,context};preparePhase="preparing";return api.get_hermes_state();};
+    $("hermesContext").value=98304;$("hermesContext").dispatchEvent(new Event("input"));
+    await $("prepareHermesModel").onclick();
+    check("prepareButtonUsesChosenModelAndTokens",prepareArguments.name==="fixture-agent"&&prepareArguments.context===98304);
+    check("preparationDisablesFormAndOffersStop",$("hermesModel").disabled&&$("prepareHermesModel").disabled&&!$("stopHermes").hidden);
+    await api.configure_plugin("hermes",{model:"studio-hermes-fixture:latest",context:98304});
+    choices.push({name:"studio-hermes-fixture:latest",size:1000});preparePhase="ready";await hermesUi.refresh();
+    check("preparedProfileIsSelectedAndSaved",$("hermesModel").value==="studio-hermes-fixture:latest"&&(await real.get_hermes_state()).preferences.context===98304&&!$("hermesModel").disabled);
+    check("preparationFeedbackNamesProfileAndTokens",$("hermesPreparationStatus").textContent.includes("studio-hermes-fixture")&&$("hermesPreparationStatus").textContent.includes("98"));
+    api.get_hermes_state=real.get_hermes_state;api.prepare_hermes_model=real.prepare_hermes_model;
+
     $("hermesSettingsDialog").close();await wait(30);
     showView("home");await $("projectSources").onclick();await hermesUi.refresh();
     check("researchLivesWithProjectSources",$("settingsPanel-files").contains($("hermesResearch"))&&!$("settingsPanel-files").hidden);
@@ -113,7 +133,9 @@
     showView("home");await $("openPlugins").onclick();
     check("returnRestoresSearchAndFilter",$("pluginSearch").value==="модуль 042"&&$("pluginList").children.length===1);
     for(const [key,value] of Object.entries(real))api[key]=value;
-    $("pluginSearch").value="";filter("all").click();await pluginsUi.refresh();center.scrollTop=0;
+    $("pluginSearch").value="";filter("all").click();await pluginsUi.refresh();
+    for(let attempt=0;attempt<40&&($("pluginList").children.length!==1||toggle("hermes")?.checked);attempt++){await wait(100);await pluginsUi.refresh();}
+    center.scrollTop=0;
     check("nativeCatalogRestored",$("pluginList").children.length===1&&!toggle("hermes").checked);
     window.__featureProbe={passed:true,checks,scaleFixture:{plugins:100,realPlugins:1,syntheticPlugins:99},modelRequests:0};
   } catch(error) {

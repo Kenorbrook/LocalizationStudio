@@ -35,6 +35,12 @@ class DesktopApi(CloseApi):
     def configure_hermes(self, values):
         return self._hermes.configure(values)
 
+    def get_hermes_models(self):
+        return self._hermes.models.listing()
+
+    def prepare_hermes_model(self, model, context):
+        return self._hermes.prepare_model(model, context)
+
     def install_hermes(self):
         return self._hermes.install()
 

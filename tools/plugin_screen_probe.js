@@ -4,7 +4,11 @@
     for (let n=0;n<150&&!studioState.snapshot;n++)await wait(40);
     await pluginsUi.open();
     const screen=window.__pluginScreen;
-    if(screen==="settings")await hermesUi.openSettings();
+    if(screen==="settings") {
+      window.pywebview.api.get_hermes_models=async()=>({online:true,models:[{name:"fixture-agent",size:4000000000,details:{parameter_size:"4B"}}],error:""});
+      await hermesUi.openSettings();
+      $("hermesModel").value="fixture-agent";$("hermesModel").dispatchEvent(new Event("input"));
+    }
     if(screen==="sources") {workspaceUi.openSettings("files");await hermesUi.refresh();}
     if(screen==="errors") {showView("errors");await loadErrors();await hermesUi.refresh();$("errorRecoveryDetails").open=true;}
     const checks={catalogAvailable:!!$("openPlugins"),namedDialog:[...document.querySelectorAll("dialog[open]")].every(node=>!!node.getAttribute("aria-labelledby")),noHorizontalOverflow:document.documentElement.scrollWidth<=innerWidth};
