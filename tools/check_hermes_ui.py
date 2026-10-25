@@ -16,6 +16,7 @@ from core import Store
 from update_package import reject_links
 from hermes_install import COMMIT
 from inspection_client import inspect_app
+from version import VERSION
 
 
 def main():
@@ -23,6 +24,7 @@ def main():
     parser.add_argument("--screen", choices=["settings", "sources", "errors", "empty"])
     parser.add_argument("--extensions", action="store_true")
     parser.add_argument("--state-only", action="store_true")
+    parser.add_argument("--journey", action="store_true")
     args = parser.parse_args()
     parent = ROOT / "qa-knowledge"
     fixture = parent / ("hermes-" + uuid.uuid4().hex)
@@ -110,8 +112,17 @@ def main():
             + (ROOT / "tools/plugin_extensions_probe.js").read_text(encoding="utf-8"),
             encoding="utf-8",
         )
-    name = "v060-plugin-" + (
-        "extensions" if args.extensions else args.screen or "catalog"
+    if args.journey:
+        probe = ROOT / "tools/project_journey_probe.js"
+    name = (
+        "v"
+        + VERSION.replace(".", "")
+        + "-plugin-"
+        + (
+            "journey"
+            if args.journey
+            else "extensions" if args.extensions else args.screen or "catalog"
+        )
     )
     report = fixture / "probe.json"
     gui = subprocess.Popen(

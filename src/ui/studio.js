@@ -713,6 +713,7 @@ window.addEventListener(
   guard(async () => {
     await refresh(true);
     let m = await request("models");
+    studioLifecycle.notify("localModels", m);
     $("connection").textContent = m.online
       ? "● Ollama подключена · без VPN"
       : "Ollama недоступна · импорт и правки работают";

@@ -93,7 +93,13 @@ const pluginsUi = (() => {
     "empty",
   );
   empty.id = "pluginEmpty";
-  pane.append(toolbar, filters, count, feedback, list, empty);
+  const purpose = element(
+    "p",
+    "Плагины — необязательные дополнения. Поиск поддерживаемых файлов, перевод, справочник и локальная редактура встроены в Studio. Автоматического установщика перевода в игру пока нет.",
+    "sub",
+  );
+  purpose.id = "pluginPurpose";
+  pane.append(purpose, toolbar, filters, count, feedback, list, empty);
   center.append(pane);
   const entry = element("button", "Плагины", "plugin-navigation");
   entry.id = "openPlugins";

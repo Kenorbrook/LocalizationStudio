@@ -131,6 +131,12 @@ def project_analysis(store, q, port):
     return data
 
 
+def project_workflow(store, q, port):
+    from project_workflow import overview
+
+    return overview(store, int(q["project"]))
+
+
 def job_log(store, q, port):
     data = read_job_log(store, int(q["id"]))
     return data
@@ -158,6 +164,7 @@ def knowledge(store, q, port):
 
 
 ROUTES = {
+    "/api/project-workflow": project_workflow,
     "/api/knowledge": knowledge,
     "/api/state": state,
     "/api/completed-projects": completed_projects,

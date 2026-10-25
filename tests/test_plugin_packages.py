@@ -77,7 +77,7 @@ class PluginPackageTests(unittest.TestCase):
             restarted.entry("hermes")["provider"].preferences["model"], "saved-model"
         )
         self.assertEqual(runtime.read_text(), "installed runtime")
-        self.assertEqual(self.catalog.snapshot()["plugins"][0]["version"], "1.0.0")
+        self.assertEqual(self.catalog.snapshot()["plugins"][0]["version"], "1.0.1")
 
     def test_update_and_rollback_preserve_enabled_and_data_and_other_plugins(self):
         original = self.manager.entry("hermes")["provider"]

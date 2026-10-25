@@ -283,15 +283,29 @@ export function create(api) {
     },
   );
   button("hermesReportSettings", "Настройки Hermes", taskActions, openSettings);
-  task.body.append(taskStatus, report, taskActions);
+  const reportScope = element(
+    "p",
+    "Это отчёт-рекомендация. Hermes не добавил текст в проект, не изменил справочник и не установил перевод в игру.",
+    "sub",
+  );
+  reportScope.id = "hermesReportScope";
+  button(
+    "hermesReportImport",
+    "Перейти к поиску текста и импорту",
+    taskActions,
+    () => {
+      task.dialog.close();
+      workspaceUi.openSettings("files");
+      $("inspectProject").click();
+    },
+  );
+  task.body.append(taskStatus, reportScope, report, taskActions);
   async function runTask(mode) {
     const project = studioState.project;
     if (!project) throw Error("Откройте проект");
     await native.run_hermes(project, mode);
     task.title.textContent =
-      mode === "research"
-        ? "Исследование игровых файлов"
-        : "Разбор ошибок с Hermes";
+      mode === "research" ? "Отчёт о файлах игры" : "Разбор ошибок с Hermes";
     if (!task.dialog.open) task.dialog.showModal();
     await refresh();
   }
@@ -324,7 +338,7 @@ export function create(api) {
   }
   const sources = element("section", undefined, "plugin-inline-group");
   sources.id = "hermesSources";
-  const sourceTitle = element("h3", "Исследование с ИИ");
+  const sourceTitle = element("h3", "Дополнительный отчёт Hermes");
   sourceTitle.append(
     workspaceUi.help(
       "Hermes читает структуру и ограниченные фрагменты файлов текущего проекта. Отчёт содержит наблюдения и предположения; агент не меняет игру и не получает терминал.",
@@ -334,7 +348,7 @@ export function create(api) {
   const sourceActions = element("div", undefined, "plugin-context-actions");
   const research = button(
     "hermesResearch",
-    "Исследовать с Hermes",
+    "Получить отчёт о файлах",
     sourceActions,
     () => runTask("research"),
   );
@@ -355,10 +369,10 @@ export function create(api) {
   sources.append(sourceTitle, sourceActions, sourceReason);
   api.mount("project.settings.files", sources);
   const overviewSources = element("section", undefined, "ux-overview-card");
-  overviewSources.append(element("h2", "Файлы и источники"));
+  overviewSources.append(element("h2", "Отчёты помощника"));
   button(
     "projectSources",
-    "Открыть файлы и исследование",
+    "Исследование файлов с Hermes",
     overviewSources,
     () => workspaceUi.openSettings("files"),
   );

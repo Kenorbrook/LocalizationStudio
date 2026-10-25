@@ -19,7 +19,7 @@ knowledgeTools.append(knowledgeActions);
 function updateKnowledgeModel() {
   const cloud = $("provider").value === "cloud";
   const model = $(cloud ? "cloud_model" : "model").value || "модель не выбрана";
-  setText(analyzeKnowledge, "Обновить справочник");
+  setText(analyzeKnowledge, "Собрать персонажей и термины");
   analyzeKnowledge.dataset.modelDescription = `${cloud ? "Облако" : "Локально"}: ${model}`;
 }
 for (const id of ["provider", "cloud_model", "model"]) {
@@ -86,7 +86,7 @@ analyzeKnowledge.onclick = guard(async () => {
   });
   await refresh();
   toast(
-    "Анализ запущен в отдельном PowerShell. Тексты и ручные правки сохраняются.",
+    "Анализ текста запущен · прогресс и журнал в приложении. Ручные правки сохраняются.",
   );
 });
 const knowledgeDialog = element("dialog");

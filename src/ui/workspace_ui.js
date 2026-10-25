@@ -385,7 +385,7 @@ const workspaceUi = (() => {
     },
     true,
   );
-  const overview = element("button", "Обзор проекта");
+  const overview = element("button", "Перевод игры");
   overview.id = "viewOverview";
   overview.onclick = guard(() => {
     if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
@@ -422,7 +422,7 @@ const workspaceUi = (() => {
   projectTools.hidden = true;
   const overviewGrid = element("div", undefined, "ux-overview-grid");
   const contextCard = element("section", undefined, "ux-overview-card");
-  const contextTitle = element("h2", "Контекст проекта");
+  const contextTitle = element("h2", "Персонажи и термины");
   contextTitle.append(
     help(
       "Справочник содержит персонажей, отношения, термины и неясные места с цитатами исходника. Подтверждённые сведения помогают переводу.",

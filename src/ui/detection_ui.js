@@ -1,5 +1,5 @@
 // Project-scoped offline inspection, loaded once per project, never on each poll.
-const inspectButton = element("button", "Структура игры");
+const inspectButton = element("button", "Поиск текста и импорт");
 inspectButton.id = "inspectProject";
 projectTools.append(inspectButton);
 const detectionSummary = element(
@@ -12,14 +12,14 @@ summary.after(detectionSummary);
 detectionSummary.hidden = true;
 const detectionDialog = element("dialog");
 detectionDialog.id = "detectionDialog";
-detectionDialog.append(element("h1", "Структура игры и доступный текст"));
+detectionDialog.append(element("h1", "Поиск текста и импорт из игры"));
 const detectionBody = element("div");
 detectionBody.id = "detectionBody";
 detectionBody.style.cssText =
   "max-height:58vh;overflow:auto;scrollbar-gutter:stable";
 const detectionActions = element("div", undefined, "flex wrap");
 detectionActions.style.marginTop = "15px";
-const rescanButton = element("button", "Повторить анализ"),
+const rescanButton = element("button", "Повторить поиск файлов"),
   importDetectedButton = element(
     "button",
     "Импортировать выбранные",
