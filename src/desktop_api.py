@@ -11,6 +11,23 @@ class DesktopApi(CloseApi):
         super().__init__(closer)
         self._updates = updates
         self._hermes = hermes
+        from plugin_catalog import PluginCatalog
+
+        self._plugins = (
+            PluginCatalog(hermes.store, hermes) if hermes is not None else None
+        )
+
+    def get_plugins(self):
+        return self._plugins.snapshot()
+
+    def set_plugin_enabled(self, identity, enabled):
+        return self._plugins.set_enabled(identity, enabled)
+
+    def set_plugin_favorite(self, identity, favorite):
+        return self._plugins.set_favorite(identity, favorite)
+
+    def configure_plugin(self, identity, values):
+        return self._plugins.configure(identity, values)
 
     def get_hermes_state(self, project=0):
         return self._hermes.snapshot(int(project))

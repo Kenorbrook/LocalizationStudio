@@ -131,9 +131,10 @@ def main():
                     "project_lifecycle.APP_HOME", ROOT if args.source else bundle
                 ):
                     if not stop_worker(store, current):
-                        raise RuntimeError(
-                            "Could not verify and stop the fixture worker"
-                        )
+                        if process_alive(current["pid"]) is not False:
+                            raise RuntimeError(
+                                "Could not verify and stop the fixture worker"
+                            )
 
     try:
 
@@ -231,7 +232,16 @@ def main():
 
         def paused_ui():
             snap = inspect_app(store.path)
-            return snap if "завершился" in snap["ui"]["text"] else None
+            text = snap["ui"]["text"]
+            return (
+                snap
+                if (
+                    "завершился" in text
+                    and "Модель работает…" not in text
+                    and "Результат этой строки ещё не сохранён." in text
+                )
+                else None
+            )
 
         paused = until(paused_ui, 10)
         checks["ui_explains_pause"] = "Продолжить" in paused["ui"]["text"]
@@ -320,10 +330,12 @@ def main():
         print(json.dumps(result), flush=True)
         assert result["passed"], checks
     finally:
-        stop_fixture_worker()
-        if gui.poll() is None:
-            gui.terminate()
-            gui.wait(timeout=15)
+        try:
+            stop_fixture_worker()
+        finally:
+            if gui.poll() is None:
+                gui.terminate()
+                gui.wait(timeout=15)
         if fixture.resolve().parent != (ROOT / "qa-knowledge").resolve():
             raise RuntimeError("Unexpected fixture path")
         reject_links(fixture)

@@ -1,6 +1,8 @@
 """Verify optional-plugin UX in a hidden EXE; never download inside a UI probe."""
 
 import json
+import base64
+import argparse
 import shutil
 import subprocess
 import sys
@@ -11,19 +13,30 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 from core import Store
 from update_package import reject_links
+from hermes_install import COMMIT
+from inspection_client import inspect_app
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--screen", choices=["settings", "sources", "errors", "empty"])
+    args = parser.parse_args()
     parent = ROOT / "qa-knowledge"
     fixture = parent / ("hermes-" + str(time.time_ns()))
     fixture.mkdir(parents=True)
     store = Store(fixture / "test.sqlite3")
+    plugin_root = fixture / "plugins/hermes"
+    source = plugin_root / "home/hermes-agent"
+    source.mkdir(parents=True)
+    (source / "run_agent.py").write_text("# neutral installed fixture, never executed")
+    (plugin_root / "installed.json").write_text(json.dumps({"commit": COMMIT}))
     game = fixture / "game"
     game.mkdir()
-    project = store.project(str(game))["id"]
+    project = store.project(str(game))["id"] if args.screen != "empty" else None
     corpus = game / "text.json"
     corpus.write_text(json.dumps([{"source": "A neutral sentence."}]))
-    store.import_files(project, [corpus])
+    if project:
+        store.import_files(project, [corpus])
     settings = {
         "model": "fixture-agent",
         "source_language": "English",
@@ -33,12 +46,24 @@ def main():
         "context_after": 4,
         "max_output": 1200,
     }
-    job = store.create_job(project, "translate", "local", settings)
-    store.error(
-        job, 1, "Локальная модель: не хватило оперативной памяти или видеопамяти"
-    )
-    with store.db() as db:
-        db.execute("UPDATE jobs SET state='incomplete' WHERE id=?", (job,))
+    if project:
+        job = store.create_job(project, "translate", "local", settings)
+        store.error(
+            job, 1, "Локальная модель: не хватило оперативной памяти или видеопамяти"
+        )
+        with store.db() as db:
+            db.execute("UPDATE jobs SET state='incomplete' WHERE id=?", (job,))
+    probe = ROOT / "tools/hermes_ui_probe.js"
+    if args.screen:
+        probe = fixture / "screen.js"
+        probe.write_text(
+            "window.__pluginScreen="
+            + json.dumps(args.screen)
+            + ";\n"
+            + (ROOT / "tools/plugin_screen_probe.js").read_text(encoding="utf-8"),
+            encoding="utf-8",
+        )
+    name = "v051-plugin-" + (args.screen or "catalog")
     report = fixture / "probe.json"
     gui = subprocess.Popen(
         [
@@ -49,7 +74,7 @@ def main():
             "--smoke-report",
             str(report),
             "--ui-test-script",
-            str(ROOT / "tools/hermes_ui_probe.js"),
+            str(probe),
         ],
         creationflags=subprocess.CREATE_NO_WINDOW,
     )
@@ -62,7 +87,14 @@ def main():
                 raise RuntimeError("Neutral Hermes UI exited early")
             time.sleep(0.25)
         result = json.loads(report.read_text(encoding="utf-8"))
-        (ROOT / "reports/hermes-ui-result.json").write_text(
+        if result.get("passed"):
+            captured = inspect_app(store.path, True)
+            image = captured.pop("image")
+            (ROOT / f"reports/{name}.png").write_bytes(base64.b64decode(image["data"]))
+            (ROOT / f"reports/{name}-state.json").write_text(
+                json.dumps(captured, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        (ROOT / f"reports/{name}.json").write_text(
             json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
         )
         print(json.dumps(result), flush=True)

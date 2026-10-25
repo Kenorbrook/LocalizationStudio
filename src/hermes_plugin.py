@@ -120,13 +120,73 @@ class HermesPlugin:
                 raise ValueError(
                     "Дождитесь завершения работы плагина или остановите его"
                 )
-            guard_root(self.root)
-            self.root.mkdir(parents=True, exist_ok=True)
-            temporary = self.root / "preferences.tmp"
-            temporary.write_text(json.dumps(values), encoding="utf-8")
-            temporary.replace(self.root / "preferences.json")
-            self.preferences = values
+            self._persist(values)
         return self.snapshot()
+
+    def _persist(self, values):
+        guard_root(self.root)
+        self.root.mkdir(parents=True, exist_ok=True)
+        temporary = self.root / "preferences.tmp"
+        temporary.write_text(json.dumps(values), encoding="utf-8")
+        temporary.replace(self.root / "preferences.json")
+        self.preferences = values
+
+    def configure_settings(self, values):
+        if set(values) != {"model", "context"}:
+            raise ValueError("Некорректные настройки Hermes")
+        with self.lock:
+            return self.configure({**self.preferences, **values})
+
+    def set_enabled(self, enabled):
+        if type(enabled) is not bool:
+            raise ValueError("Некорректный переключатель плагина")
+        with self.lock:
+            if enabled and not self.installed():
+                raise ValueError("Сначала установите Hermes")
+            self._persist({**self.preferences, "enabled": enabled})
+
+    def summary(self):
+        with self.lock:
+            installed = self.installed()
+            enabled = self.preferences["enabled"]
+            attention = False
+            if self.busy:
+                state = "busy"
+                label = {
+                    "installing": "Устанавливается",
+                    "checking": "Проверяется",
+                }.get(
+                    self.status["phase"],
+                    "Работает" if enabled else "Отключён · завершает работу",
+                )
+            elif self.status["phase"] == "error":
+                state, label, attention = "error", "Ошибка", True
+            elif not installed:
+                state, label, attention = (
+                    "available",
+                    "Нужна установка" if enabled else "Не установлен",
+                    enabled,
+                )
+            elif not enabled:
+                state, label = "disabled", "Отключён"
+            elif not self.preferences["model"]:
+                state, label, attention = "setup", "Нужна настройка", True
+            else:
+                state, label = "enabled", "Включён"
+            return {
+                "installed": installed,
+                "enabled": enabled,
+                "busy": self.busy,
+                "state": state,
+                "state_label": label,
+                "attention": attention,
+                "message": (
+                    self.status["message"]
+                    if self.busy or self.status["phase"] == "error"
+                    else ""
+                ),
+                "can_toggle": installed or enabled,
+            }
 
     def _set(self, **values):
         with self.lock:
@@ -139,6 +199,8 @@ class HermesPlugin:
             if self.busy or getattr(self.store, "closing", False):
                 raise ValueError("Плагин занят или приложение закрывается")
             if phase == "running":
+                if not self.preferences["enabled"]:
+                    raise ValueError("Плагин отключён")
                 with self.store.db() as db:
                     if db.execute(
                         "SELECT 1 FROM jobs WHERE state IN ('running','queued') OR worker_active=1"

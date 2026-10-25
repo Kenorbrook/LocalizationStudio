@@ -271,7 +271,7 @@ function pendingTranslationText(job) {
   );
 }
 function currentRecordPage() {
-  if (["home", "errors"].includes(studioState.viewMode)) return null;
+  if (["home", "errors", "plugins"].includes(studioState.viewMode)) return null;
   const specialized = studioLifecycle.page(studioState.viewMode);
   if (specialized) return specialized;
   if (!studioState.file) return null;

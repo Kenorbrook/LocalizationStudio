@@ -51,7 +51,7 @@ studioLifecycle.register("mcpInfo", "connectionStatus", () => {
 function showView(mode) {
   studioState.viewMode = mode;
   home.hidden = mode !== "home";
-  textPane.hidden = mode === "home" || mode === "errors";
+  textPane.hidden = ["home", "errors", "plugins"].includes(mode);
   back.hidden = mode === "home";
   projectNav.hidden = mode === "home";
   $("files").hidden = mode !== "text";
