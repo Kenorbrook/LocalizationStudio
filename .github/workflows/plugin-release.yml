@@ -4,6 +4,9 @@ on:
     tags: ['plugin-*-v*']
 permissions:
   contents: write
+env:
+  PYTHONUTF8: '1'
+  PYTHONIOENCODING: utf-8
 jobs:
   plugin:
     runs-on: windows-latest
