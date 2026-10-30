@@ -15,6 +15,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - name: Validate and package
         shell: pwsh
         run: |
@@ -23,6 +26,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Dependencies failed' }
           ./.venv/Scripts/python.exe -m unittest discover -s tests -t . -p 'test_*.py'
           if ($LASTEXITCODE -ne 0) { throw 'Tests failed' }
+          ./.venv/Scripts/python.exe -m black --check src plugins examples/plugins tests tools packaging/LocalizationStudio.spec packaging/LocalizationUpdater.spec
+          if ($LASTEXITCODE -ne 0) { throw 'Formatting failed' }
+          ./.venv/Scripts/python.exe tools/format_ui.py --check
+          if ($LASTEXITCODE -ne 0) { throw 'UI formatting failed' }
           if ($env:GITHUB_REF_NAME -notmatch '^plugin-([a-z][a-z0-9-]*)-v(\d+\.\d+\.\d+)$') { throw 'Invalid plugin tag' }
           $pluginId = $Matches[1]
           $pluginVersion = $Matches[2]
