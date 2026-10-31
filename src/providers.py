@@ -13,6 +13,7 @@ from script_validation import (
     mixed_script_word,
     mixed_script_message,
     repair_entry,
+    normalize_russian_lookalikes,
 )
 
 DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -381,6 +382,14 @@ def process_record(provider, stage, entry):
 def _process_record_direct(provider, stage, entry):
     from local_editor import one_item, review_entries, register_error
 
+    def normalize(text):
+        language = (
+            getattr(provider, "settings", {}).get("target_language", "Russian").lower()
+        )
+        if language in {"russian", "ru", "русский"}:
+            return normalize_russian_lookalikes(entry["english"], text)
+        return text, []
+
     def check(source, text):
         try:
             validate(source, text)
@@ -418,6 +427,7 @@ def _process_record_direct(provider, stage, entry):
                 "Невербальная строка: знаки оригинала сохранены без запроса к модели",
             )
         text = one_item(provider.call("translate", [entry]), entry["id"]).get("text")
+        text, letter_changes = normalize(text)
         error = check(entry["english"], text)
         repaired = False
         if (
@@ -468,6 +478,7 @@ def _process_record_direct(provider, stage, entry):
                 text = one_item(provider.call("translate", [target]), entry["id"]).get(
                     "text"
                 )
+                text, letter_changes = normalize(text)
                 error = check(entry["english"], text)
             except (OutputTruncated, RequestTooLarge):
                 raise
@@ -482,11 +493,17 @@ def _process_record_direct(provider, stage, entry):
             if repaired:
                 raise ScriptRepairFailed(error + suffix, candidate=text)
             raise ValueError(error + suffix)
-        return text, (
-            "Автоисправлено смешение алфавитов; перевод проверен повторно"
-            if repaired
-            else ""
-        )
+        reasons = []
+        if repaired:
+            reasons.append(
+                "Автоисправлено смешение алфавитов; перевод проверен повторно"
+            )
+        if letter_changes:
+            reasons.append(
+                "Исправлены похожие латинские буквы: "
+                + "; ".join(f"{old} → {new}" for old, new in letter_changes)
+            )
+        return text, " | ".join(reasons)
     events = []
     result = review_entries([entry], provider.call, check, events.append)
     if any(e.get("status") in {"uncertain", "rejected", "unchanged"} for e in events):

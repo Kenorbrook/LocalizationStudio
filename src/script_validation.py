@@ -5,6 +5,46 @@ from validation import TOKEN
 
 MIXED_SCRIPT_PREFIX = "Смешаны латиница и кириллица внутри слова: "
 WORDS = re.compile(r"[A-Za-zА-Яа-яЁё]+")
+LATIN_LOOKALIKES = dict(zip("ABCEHKMOPTXYaceopxy", "АВСЕНКМОРТХУасеорху"))
+
+
+def normalize_russian_lookalikes(source, text):
+    """Correct isolated visual typos only; never translate a mostly Latin word."""
+    if not isinstance(text, str):
+        return text, []
+    original = {word.casefold() for word in WORDS.findall(source)}
+    protected = [(m.start(), m.end()) for m in TOKEN.finditer(text)]
+    changes = []
+
+    def replace(match):
+        word = match.group()
+        if word.casefold() in original or any(
+            a <= match.start() < b for a, b in protected
+        ):
+            return word
+        # Do not rewrite untagged identifiers, numbers or Unicode compounds.
+        for index in (match.start() - 1, match.end()):
+            if 0 <= index < len(text) and (text[index].isalnum() or text[index] == "_"):
+                return word
+        latin = re.findall("[A-Za-z]", word)
+        cyrillic = re.findall("[А-Яа-яЁё]", word)
+        if not 1 <= len(latin) <= 2 or len(cyrillic) < 4 * len(latin):
+            return word
+        if any(character not in LATIN_LOOKALIKES for character in latin):
+            return word
+        if not word.isupper() and any(
+            character.isupper()
+            for character in word[1:]
+            if character in LATIN_LOOKALIKES
+        ):
+            return word
+        fixed = "".join(
+            LATIN_LOOKALIKES.get(character, character) for character in word
+        )
+        changes.append((word, fixed))
+        return fixed
+
+    return WORDS.sub(replace, text), changes
 
 
 class ScriptRepairFailed(ValueError):
