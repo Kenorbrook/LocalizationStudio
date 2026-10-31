@@ -115,12 +115,23 @@ class JobsRepository:
             )
             return jid
 
-    def error(self, job, record, message):
+    def error(self, job, record, message, candidate=""):
         with self.database.connect() as db:
             p = db.execute("SELECT project FROM jobs WHERE id=?", (job,)).fetchone()[0]
             db.execute(
-                "INSERT INTO errors(project,job,record,message,at) VALUES (?,?,?,?,?)",
-                (p, job, record, message[:2000], now()),
+                "INSERT INTO errors(project,job,record,message,at,candidate) VALUES (?,?,?,?,?,?)",
+                (
+                    p,
+                    job,
+                    record,
+                    message[:2000],
+                    now(),
+                    (
+                        candidate
+                        if isinstance(candidate, str) and len(candidate) <= 100000
+                        else ""
+                    ),
+                ),
             )
         if record:
             try:

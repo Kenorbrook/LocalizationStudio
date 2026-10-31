@@ -15,6 +15,22 @@ def manual_error(store, data):
         raise ValueError("Строка не принадлежит проекту")
     if row["preserve_kind"]:
         return dispatch(store, "translate-preserved", {**data, "mode": "manual"})
+    from script_validation import mixed_script_word, mixed_script_message
+
+    with store.db() as db:
+        settings = json.loads(
+            db.execute(
+                "SELECT settings FROM projects WHERE id=?", (row["project"],)
+            ).fetchone()[0]
+        )
+    if settings.get("target_language", "Russian").lower() in {
+        "russian",
+        "ru",
+        "русский",
+    }:
+        word = mixed_script_word(row["source"], data["text"])
+        if word:
+            raise ValueError(mixed_script_message(word))
     return store.update(
         row["id"],
         int(data["revision"]),

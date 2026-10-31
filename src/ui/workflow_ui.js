@@ -245,6 +245,25 @@ let contextRequest = 0;
 infoDialog.addEventListener("close", () => {
   contextRequest++;
 });
+async function showRecordHistory(row) {
+  if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
+  const history = await request("history?id=" + row.id);
+  $("infoTitle").textContent = "История строки #" + (Number(row.position) + 1);
+  $("infoContent").replaceChildren(
+    ...history.map((h) => {
+      const item = element("div", undefined, "error");
+      item.append(
+        element("div", h.at + " · " + h.reviewer + " · " + labels[h.status]),
+        element("p", h.text),
+        element("pre", h.reason),
+      );
+      return item;
+    }),
+  );
+  if (!history.length)
+    $("infoContent").append(element("p", "Сохранённых версий пока нет"));
+  if (!$("infoDialog").open) $("infoDialog").showModal();
+}
 async function showRecordContext(id, radius = 10) {
   id = Number(id);
   const generation = ++contextRequest;

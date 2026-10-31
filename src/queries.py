@@ -130,9 +130,10 @@ def state(store, project, editing=False):
                 (project,),
             )
         ]
-        errors = db.execute(
-            "SELECT count(*) FROM errors WHERE project=? AND resolved=0", (project,)
-        ).fetchone()[0]
+        from error_catalog import count as error_count, repair_candidates
+
+        errors = error_count(db, project)
+        repairable_errors = len(repair_candidates(db, project))
         pending = db.execute(
             "SELECT count(*) FROM queue q JOIN jobs j ON j.id=q.job WHERE j.project=? AND j.state IN ('queued','running','paused','waiting','held') AND q.state='pending' AND NOT EXISTS(SELECT 1 FROM preserved_records p WHERE p.record=q.record)",
             (project,),
@@ -150,6 +151,7 @@ def state(store, project, editing=False):
         "counts": counts,
         "jobs": jobs,
         "errors": errors,
+        "repairable_errors": repairable_errors,
         "pending": pending,
         "flags": flags,
     }

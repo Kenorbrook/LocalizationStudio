@@ -128,6 +128,20 @@ def run(store, jid, provider_factory=Provider):
                     "UPDATE jobs SET current=?,fragment_done=0,fragment_total=0,fragment_preview='' WHERE id=?",
                     (rid, jid),
                 )
+                if (
+                    str(rid) in settings.get("_error_repair", {})
+                    and not db.execute(
+                        "SELECT 1 FROM errors WHERE project=? AND record=? AND resolved=0",
+                        (job["project"], rid),
+                    ).fetchone()
+                ):
+                    already_fixed = True
+                else:
+                    already_fixed = False
+            if already_fixed:
+                emit(f"SKIP #{rid}: ошибка уже исправлена; готовый перевод сохранён")
+                complete_record(rid, "done")
+                continue
             from foreign_language import check_record
 
             r = check_record(store, rid, settings, worker_job=jid)
@@ -171,6 +185,11 @@ def run(store, jid, provider_factory=Provider):
                     provider.progress = emit
                     effective_settings = record_settings
                 entry = context_entry(store, rid, settings=record_settings)
+                repair = record_settings.get("_error_repair", {}).get(str(rid))
+                if repair:
+                    from script_validation import retry_feedback
+
+                    entry["validation_feedback"] = retry_feedback(repair)
                 if r["flag"]:
                     entry["human_review_flag"] = r["flag"]
                 emit(f'SOURCE #{rid}: {r["source"]}')
@@ -259,7 +278,7 @@ def run(store, jid, provider_factory=Provider):
                         ):
                             emit("INCOMPLETE: остановлено")
                             return
-                    store.error(jid, rid, str(e))
+                    store.error(jid, rid, str(e), candidate=getattr(e, "candidate", ""))
                     outcome = "error"
                     emit(f"ERROR #{rid}: {e} — продолжаю")
             complete_record(rid, outcome)

@@ -378,25 +378,7 @@ function renderRecordCards(data, quiet = false) {
       return b;
     }
     button("Контекст", () => showRecordContext(r.id));
-    button("История", async () => {
-      let history = await request("history?id=" + r.id);
-      $("infoTitle").textContent = "История строки #" + (r.position + 1);
-      $("infoContent").replaceChildren(
-        ...history.map((h) => {
-          let d = element("div", undefined, "error");
-          d.append(
-            element(
-              "div",
-              h.at + " · " + h.reviewer + " · " + labels[h.status],
-            ),
-            element("p", h.text),
-            element("pre", h.reason),
-          );
-          return d;
-        }),
-      );
-      $("infoDialog").showModal();
-    });
+    button("История", () => showRecordHistory(r));
     if (r.manual)
       button("Снять защиту ручной правки", async () => {
         await request("unlock", { id: r.id });

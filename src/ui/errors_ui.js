@@ -16,12 +16,25 @@ center.append(errorsPane);
 let errorOffset = 0,
   errorProject = 0,
   errorListSignature = "";
+const errorOpenDetails = new Set();
+function errorDisclosure(key) {
+  const details = element("details");
+  details.open = errorOpenDetails.has(key);
+  details.ontoggle = () => {
+    if (details.isConnected) {
+      if (details.open) errorOpenDetails.add(key);
+      else errorOpenDetails.delete(key);
+    }
+  };
+  return details;
+}
 function updateErrorsPane() {
   errorsPane.hidden = studioState.viewMode !== "errors";
   if (errorProject !== studioState.project) {
     errorProject = studioState.project;
     errorOffset = 0;
     errorListSignature = "";
+    errorOpenDetails.clear();
   }
 }
 $("errorsButton").onclick = guard(async () => {
@@ -55,6 +68,13 @@ function modalError(e, where) {
 }
 async function loadErrors() {
   if (studioState.viewMode !== "errors") return;
+  errorOffset = Math.min(
+    errorOffset,
+    Math.max(
+      0,
+      Math.floor(((studioState.snapshot?.errors || 0) - 1) / 100) * 100,
+    ),
+  );
   const identity = studioState.project + ":" + errorOffset;
   try {
     const [errors, retryPlan] = await Promise.all([
@@ -78,7 +98,12 @@ async function loadErrors() {
         ? `${errorOffset + 1}–${errorOffset + errors.length} из ${studioState.snapshot.errors || errors.length}`
         : "Открытых ошибок нет",
     );
-    const signature = JSON.stringify([identity, errors, retryPlan]);
+    const signature = JSON.stringify([
+      identity,
+      errors,
+      retryPlan,
+      studioState.snapshot.repairable_errors,
+    ]);
     if (signature === errorListSignature) return;
     errorListSignature = signature;
     const scroll = center.scrollTop;
@@ -105,8 +130,17 @@ async function loadErrors() {
         plan: retryPlan,
       });
     content.append(bulk);
+    const repairAll = element("button", "Исправить смешение букв", "secondary");
+    repairAll.id = "repairScriptErrors";
+    repairAll.disabled = !studioState.snapshot.repairable_errors;
+    repairAll.title =
+      "Все локальные ошибки смешения букв проекта: новый запрос с конкретной причиной ошибки. Очередь начнётся после текущих задач.";
+    repairAll.style.margin = "0 0 16px 8px";
+    repairAll.onclick = guard(() => enqueueErrorRepair(null, repairAll));
+    content.append(repairAll);
     for (const e of errors) {
       const card = element("div", undefined, "error");
+      card.dataset.errorRecord = e.record || "";
       card.append(
         element(
           "div",
@@ -124,7 +158,70 @@ async function loadErrors() {
       const repeat = element("button", "Повторить");
       repeat.dataset.errorRepeat = e.id;
       repeat.onclick = () => showErrorRetry(e);
-      if (e.record && e.stage) card.append(estimate, repeat);
+      const actions = element("div", undefined, "record-actions");
+      if (e.record && e.stage) {
+        const context = element("button", "Контекст");
+        context.dataset.errorContext = e.record;
+        context.onclick = guard(async () => {
+          if (studioState.dirty.size)
+            throw Error("Сохраните или отмените правки");
+          await showRecordContext(e.record);
+        });
+        const history = element("button", "История");
+        history.dataset.errorHistory = e.record;
+        history.onclick = guard(() =>
+          showRecordHistory({ id: e.record, position: e.position }),
+        );
+        const manual = element("button", "Править вручную");
+        manual.dataset.errorManual = e.record;
+        manual.onclick = guard(() => showErrorManual(e));
+        actions.append(context, history, manual);
+        if (e.repairable) {
+          const repair = element("button", "Исправить с подсказкой", "primary");
+          repair.dataset.errorRepair = e.record;
+          repair.title =
+            "Новый локальный запрос с конкретной ошибкой и указанием исправить алфавит; используется отдельный кэш.";
+          repair.onclick = guard(() => enqueueErrorRepair(e.record, repair));
+          actions.append(repair);
+        }
+        actions.append(repeat);
+        const diagnostics = errorDisclosure("budget:" + e.id);
+        diagnostics.append(
+          element("summary", "Параметры неудачного запроса"),
+          estimate,
+        );
+        card.append(diagnostics, actions);
+        if (e.candidate) {
+          const rejected = errorDisclosure("candidate:" + e.id);
+          const draft = element("pre", e.candidate);
+          draft.style.cssText = "white-space:pre-wrap;overflow-wrap:anywhere";
+          rejected.append(
+            element("summary", "Отклонённый ответ модели"),
+            draft,
+          );
+          card.append(rejected);
+        }
+      }
+      if (e.attempt_count > 1) {
+        const attempts = errorDisclosure("attempts:" + e.record);
+        attempts.dataset.errorAttempts = e.record;
+        attempts.append(
+          element("summary", `Неудачные попытки · ${e.attempt_count}`),
+        );
+        for (const attempt of e.attempts || []) {
+          const item = element("div", undefined, "error-attempt");
+          item.append(
+            element(
+              "div",
+              `${attempt.at} · задача ${attempt.job || "импорт"}`,
+              "sub",
+            ),
+            element("p", attempt.message),
+          );
+          attempts.append(item);
+        }
+        card.append(attempts);
+      }
       content.append(card);
     }
     if (!errors.length) content.append(element("p", "Открытых ошибок нет"));
@@ -132,6 +229,33 @@ async function loadErrors() {
   } catch (e) {
     toast(e.message);
   }
+}
+async function enqueueErrorRepair(record, button) {
+  if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
+  button.disabled = true;
+  try {
+    const result = await request("enqueue-error-retry", {
+      project: studioState.project,
+      stage: "translate",
+      mode: "repair",
+      record,
+    });
+    await refresh();
+    toast(
+      result.already_queued
+        ? "Исправление уже в очереди №" + result.job
+        : `Добавлена очередь исправления №${result.job} · ${result.records} строк`,
+    );
+  } finally {
+    button.disabled = false;
+  }
+}
+async function showErrorManual(error) {
+  if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
+  const row = await request("current?id=" + error.record);
+  if (error.candidate && row.revision === error.revision && !row.manual)
+    row.text = error.candidate;
+  return showPreservedManual(row, "manual-error");
 }
 async function showErrorRetry(error) {
   const content = $("infoContent");
@@ -158,8 +282,7 @@ async function showErrorRetry(error) {
         if (studioState.dirty.size)
           throw Error("Сохраните или отмените правки");
         if (mode === "manual") {
-          const row = await request("current?id=" + error.record);
-          return showPreservedManual(row, "manual-error");
+          return showErrorManual(error);
         }
         if (mode === "custom") return showErrorParameters(error);
         b.disabled = true;

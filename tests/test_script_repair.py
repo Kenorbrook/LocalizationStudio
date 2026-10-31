@@ -57,8 +57,11 @@ class ScriptRepairTests(unittest.TestCase):
 
     def test_persistent_mixture_stops_after_one_repair(self):
         model = Model("Теst готов.", "Теst готов.")
-        with self.assertRaisesRegex(ValueError, "Автоисправление алфавита не прошло"):
+        with self.assertRaisesRegex(
+            ValueError, "Автоисправление алфавита не прошло"
+        ) as rejected:
             process_record(model, "translate", self.entry())
+        self.assertEqual(rejected.exception.candidate, "Теst готов.")
         self.assertEqual(len(model.calls), 2)
 
     def test_repaired_output_must_still_pass_all_invariants(self):
@@ -214,6 +217,12 @@ class ScriptRepairTests(unittest.TestCase):
                         "Теst" not in json.loads(r[0])["text"]
                         for r in db.execute("select value from fragment_cache")
                     )
+                )
+                self.assertEqual(
+                    db.execute(
+                        "select candidate from errors where resolved=0"
+                    ).fetchone()[0],
+                    "Теst готов.",
                 )
                 history = db.execute(
                     "select reason from history where record=?", (rows[0]["id"],)

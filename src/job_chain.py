@@ -110,6 +110,12 @@ def enqueue_retry(store, data):
     stage = data["stage"]
     rid = data.get("record")
     mode = data.get("mode", "original")
+    if mode == "repair":
+        if stage != "translate":
+            raise ValueError(
+                "Исправление смешения букв доступно для локального перевода"
+            )
+        return enqueue_repair(store, pid, rid)
     if mode not in {"original", "custom"}:
         raise ValueError("Некорректный повтор")
     rows = candidates(store, pid, stage, rid)
@@ -144,3 +150,59 @@ def enqueue_retry(store, data):
     )
     schedule(store, pid)
     return {"job": jid, "records": len(ids), "queued": True}
+
+
+def enqueue_repair(store, pid, rid=None):
+    from uuid import uuid4
+    from error_catalog import repair_candidates
+    from job_runtime import validate_job_settings
+
+    with store.db() as db:
+        rows = repair_candidates(db, pid, rid)
+        if not rows:
+            raise ValueError("Нет подходящих локальных ошибок смешения букв")
+        pending = {}
+        for job in db.execute(
+            "SELECT id,settings FROM jobs WHERE project=? AND state IN ('waiting','queued','running','paused','held')",
+            (pid,),
+        ):
+            repairs = json.loads(job["settings"]).get("_error_repair", {})
+            if not repairs:
+                continue
+            for record in db.execute(
+                "SELECT record FROM queue WHERE job=? AND state='pending'", (job["id"],)
+            ):
+                if str(record[0]) in repairs:
+                    pending[record[0]] = job["id"]
+        fresh = [r for r in rows if r["record"] not in pending]
+        if not fresh:
+            return {
+                "job": pending[rows[0]["record"]],
+                "records": 0,
+                "queued": True,
+                "already_queued": True,
+            }
+        project = db.execute(
+            "SELECT settings FROM projects WHERE id=?", (pid,)
+        ).fetchone()
+    # Use the current local project model, with a new prompt and a separate cache.
+    settings = json.loads(project[0])
+    settings = validate_job_settings(store, pid, "local", settings, settings)
+    settings["_error_repair"] = {str(r["record"]): r["message"] for r in fresh}
+    settings["_retry_origin"] = fresh[0]["job"]
+    settings["cache_namespace"] = f"project:{pid}:script-repair:{uuid4().hex}"
+    settings["run_lines"] = 0
+    settings["run_minutes"] = 0
+    settings["execution_kind"] = "local"
+    settings["provider"] = "local"
+    jid = store.create_job(
+        pid,
+        "translate",
+        "local",
+        settings,
+        retry=True,
+        record_ids=[r["record"] for r in fresh],
+        defer=True,
+    )
+    schedule(store, pid)
+    return {"job": jid, "records": len(fresh), "queued": True}

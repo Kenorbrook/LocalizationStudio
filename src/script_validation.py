@@ -10,6 +10,10 @@ WORDS = re.compile(r"[A-Za-zА-Яа-яЁё]+")
 class ScriptRepairFailed(ValueError):
     """The targeted repair was exhausted; do not retry the whole record again."""
 
+    def __init__(self, message, candidate=""):
+        super().__init__(message)
+        self.candidate = candidate if isinstance(candidate, str) else ""
+
 
 def mixed_script_word(source, text):
     original = set(WORDS.findall(TOKEN.sub("", source)))
@@ -50,3 +54,18 @@ def repair_entry(entry, rejected, error):
             "Return the same JSON format and requested id only."
         ),
     }
+
+
+def retry_feedback(message):
+    match = re.search(re.escape(MIXED_SCRIPT_PREFIX) + r"([A-Za-zА-Яа-яЁё]+)", message)
+    if match and mixed_script_word("", match[1]):
+        message = mixed_script_message(match[1])
+    return (
+        "A previous translation attempt FAILED validation: "
+        + message[:1200]
+        + "\nGenerate a fresh natural Russian translation of TARGET english using the scene. "
+        "Do not copy the invalid spelling from this diagnostic. Russian words must be entirely "
+        "Cyrillic; preserve genuine names, source identifiers and protected tokens. "
+        "Translate English words rather than just replacing lookalike letters. "
+        "Preserve meaning, grammar and register. Return only the required items JSON."
+    )

@@ -460,7 +460,8 @@ def _process_record_direct(provider, stage, entry):
                         if key is None:
                             raise ScriptRepairFailed(
                                 error
-                                + " Автоисправление не помещается в контекст модели."
+                                + " Автоисправление не помещается в контекст модели.",
+                                candidate=text,
                             )
                         target[key].pop()
             try:
@@ -472,12 +473,15 @@ def _process_record_direct(provider, stage, entry):
                 raise
             except (ValueError, KeyError, TypeError) as failure:
                 raise ScriptRepairFailed(
-                    str(failure) + " Автоисправление алфавита не прошло проверку."
+                    str(failure) + " Автоисправление алфавита не прошло проверку.",
+                    candidate=text,
                 ) from None
             repaired = True
         if error:
             suffix = " Автоисправление алфавита не прошло проверку." if repaired else ""
-            raise (ScriptRepairFailed if repaired else ValueError)(error + suffix)
+            if repaired:
+                raise ScriptRepairFailed(error + suffix, candidate=text)
+            raise ValueError(error + suffix)
         return text, (
             "Автоисправлено смешение алфавитов; перевод проверен повторно"
             if repaired

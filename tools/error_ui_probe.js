@@ -1,0 +1,52 @@
+void (async () => {
+  const checks = {};
+  const check = (name, value) => { checks[name] = !!value; if (!value) throw Error(name); };
+  const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+  const until = async action => { for(let n=0;n<20;n++){if(await action())return;await wait(100);}throw Error("Fixture condition timed out"); };
+  try {
+    await until(() => studioState.project);
+    await refresh(); showView("errors"); await loadErrors();
+    check("one_card_per_record", document.querySelectorAll("[data-error-record]").length===2);
+    check("unique_sidebar_count", studioState.snapshot.errors===2);
+    const attempts=document.querySelector('[data-error-attempts="1"]');
+    check("all_three_attempts_visible_in_disclosure", attempts.querySelectorAll(".error-attempt").length===3);
+    attempts.open=true; await wait(30); await refresh();
+    check("disclosure_survives_refresh", document.querySelector('[data-error-attempts="1"]').open);
+    document.querySelector('[data-error-context="1"]').click();
+    await until(()=>!!$("contextSelected"));
+    check("context_from_error_card", $("contextSelected").textContent.includes("I copy the note."));
+    $("infoDialog").close();
+    await wait(300);
+    document.querySelector('[data-error-history="1"]').click();
+    await until(()=>$("infoDialog").open);
+    check("history_from_error_card", $("infoContent").textContent.includes("Сохранённых версий пока нет"));
+    $("infoDialog").close();
+    await wait(300);
+    document.querySelector('[data-error-manual="2"]').click();
+    await until(()=>!!$("preservedManualText"));
+    const area=$("preservedManualText");
+    check("rejected_answer_available_for_manual_edit", area.value==="До свиdания.");
+    $("preservedManualSave").click();
+    await until(()=>$("infoContent").textContent.includes("U+0064"));
+    check("invalid_draft_is_not_confirmed_as_ready", $("infoDialog").open && area.value==="До свиdания.");
+    check("manual_editor_in_context", !!$("contextSelected") && $("contextSelected").contains(area));
+    area.value="До свидания.";area.dispatchEvent(new Event("input",{bubbles:true}));area.focus();
+    for(let n=0;n<3;n++){await wait(700);await refresh();}
+    check("manual_draft_and_focus_survive_refresh", $("preservedManualText")===area && area.value==="До свидания." && document.activeElement===area && studioState.dirty.has(2));
+    $("preservedManualSave").click();await until(()=>!$("infoDialog").open);await refresh();
+    const saved=await request("current?id=2");
+    check("manual_save_is_protected", saved.text==="До свидания." && saved.manual===1);
+    check("all_attempts_removed_after_manual_save", !document.querySelector('[data-error-record="2"]') && studioState.snapshot.errors===1);
+    check("other_open_disclosure_survives_list_change", document.querySelector('[data-error-attempts="1"]').open);
+    document.querySelector('[data-error-repair="1"]').click();
+    await until(()=>studioState.snapshot.jobs.some(j=>JSON.parse(j.settings||"{}")._error_repair));
+    const queued=studioState.snapshot.jobs.filter(j=>JSON.parse(j.settings||"{}")._error_repair);
+    check("repair_waits_after_current_job", queued.length===1 && queued[0].state==="waiting");
+    const settings=JSON.parse(queued[0].settings);
+    check("repair_has_diagnostic_and_fresh_cache", settings._error_repair["1"].includes("перепиcываю") && settings.cache_namespace.includes("script-repair"));
+    $("repairScriptErrors").click();await wait(300);await refresh();
+    check("repeated_click_does_not_duplicate_queue", studioState.snapshot.jobs.filter(j=>JSON.parse(j.settings||"{}")._error_repair).length===1);
+    check("no_horizontal_overflow", document.documentElement.scrollWidth<=innerWidth);
+    window.__featureProbe={passed:true,checks};
+  } catch(error){window.__featureProbe={passed:false,checks,error:error.message,stack:error.stack};}
+})();

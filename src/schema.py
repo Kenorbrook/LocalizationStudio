@@ -14,6 +14,7 @@ def initialize(db):
     CREATE TABLE IF NOT EXISTS jobs(id INTEGER PRIMARY KEY,project INTEGER,stage TEXT,provider TEXT,settings TEXT,state TEXT,done INTEGER DEFAULT 0,total INTEGER DEFAULT 0,current INTEGER,error TEXT DEFAULT '',pid INTEGER,heartbeat REAL DEFAULT 0,created TEXT);
     CREATE TABLE IF NOT EXISTS queue(job INTEGER,record INTEGER,state TEXT DEFAULT 'pending',PRIMARY KEY(job,record));
     CREATE TABLE IF NOT EXISTS errors(id INTEGER PRIMARY KEY,project INTEGER,job INTEGER,record INTEGER,message TEXT,at TEXT,resolved INTEGER DEFAULT 0);
+    CREATE INDEX IF NOT EXISTS errors_open_record ON errors(project,resolved,record,id);
     CREATE TABLE IF NOT EXISTS proposals(id INTEGER PRIMARY KEY,record INTEGER,revision INTEGER,text TEXT,reason TEXT,reviewer TEXT,at TEXT,state TEXT DEFAULT 'pending');
     CREATE TABLE IF NOT EXISTS revision_snapshots(record INTEGER,revision INTEGER,text TEXT,status TEXT,manual INTEGER,reviewer TEXT,PRIMARY KEY(record,revision));
     CREATE TABLE IF NOT EXISTS mcp_connections(session TEXT PRIMARY KEY,pid INTEGER,client TEXT,version TEXT,heartbeat REAL,connected INTEGER DEFAULT 1);
@@ -38,6 +39,8 @@ def initialize(db):
     CREATE INDEX IF NOT EXISTS knowledge_project ON knowledge_items(project,state,subject);
     CREATE TABLE IF NOT EXISTS knowledge_evidence(item INTEGER,record INTEGER,source_hash TEXT,PRIMARY KEY(item,record));
     """)
+    if "candidate" not in {r[1] for r in db.execute("PRAGMA table_info(errors)")}:
+        db.execute("ALTER TABLE errors ADD COLUMN candidate TEXT DEFAULT ''")
     if "origin" not in {r[1] for r in db.execute("PRAGMA table_info(record_marks)")}:
         db.execute("ALTER TABLE record_marks ADD COLUMN origin TEXT DEFAULT 'unknown'")
     for column in ["completed", "keep_visible", "deleting"]:

@@ -117,8 +117,8 @@ class Store:
             defer,
         )
 
-    def error(self, job, record, message):
-        return self.jobs.error(job, record, message)
+    def error(self, job, record, message, candidate=""):
+        return self.jobs.error(job, record, message, candidate)
 
     def import_files(self, project, paths):
         return self.files.import_files(project, paths)

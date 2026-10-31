@@ -148,18 +148,9 @@ def job_log(store, q, port):
 
 
 def errors(store, q, port):
-    with store.db() as db:
-        data = [
-            dict(r)
-            for r in db.execute(
-                "SELECT e.*,r.source,r.text,j.stage,j.settings retry_settings,j.provider retry_provider FROM errors e LEFT JOIN records r ON r.id=e.record LEFT JOIN jobs j ON j.id=e.job WHERE e.project=? AND e.resolved=0 ORDER BY e.id DESC LIMIT 100 OFFSET ?",
-                (int(q["project"]), int(q.get("offset", 0))),
-            )
-        ]
-    from error_workflow import fill_budgets
+    from error_catalog import page
 
-    data = fill_budgets(store, data)
-    return data
+    return page(store, int(q["project"]), int(q.get("offset", 0)))
 
 
 def knowledge(store, q, port):

@@ -621,6 +621,7 @@ async function showPreservedManual(row, saveAction = "translate-preserved") {
         mode: "manual",
         text: area.value,
       });
+      cleanup();
       $("infoDialog").close();
       await refresh();
       await loadRows();
