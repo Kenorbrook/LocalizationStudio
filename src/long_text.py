@@ -312,6 +312,16 @@ def process(provider, stage, entry, direct):
                 if not fits(provider, target, stage):
                     raise RequestTooLarge("Фрагмент превышает бюджет запроса")
                 if cached:
+                    from script_validation import mixed_script_word
+
+                    language = settings.get("target_language", "Russian").lower()
+                    if language in {"russian", "ru", "русский"} and mixed_script_word(
+                        body, cached["text"]
+                    ):
+                        # Older builds could cache a mixed-script answer. Regenerate
+                        # this fragment only; keep all other checkpoints intact.
+                        cached = None
+                if cached:
                     text, reason = cached["text"], cached["reason"]
                 else:
                     text, reason = direct(provider, stage, target)

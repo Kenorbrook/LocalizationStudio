@@ -4,9 +4,16 @@ import ctypes, json, os, subprocess, time, urllib.request, urllib.error
 import re
 from ctypes import wintypes
 from urllib.parse import urlparse
-from core import POLICY_PATH, SHARED, TOKEN, dump, validate
+from core import POLICY_PATH, SHARED, dump, validate
 from speaker_context import GUIDANCE, project_rules
 from long_text import estimate_tokens, OutputTruncated, RequestTooLarge
+from script_validation import (
+    MIXED_SCRIPT_PREFIX,
+    ScriptRepairFailed,
+    mixed_script_word,
+    mixed_script_message,
+    repair_entry,
+)
 
 DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 LOCAL_CHAT_TIMEOUT = 600
@@ -249,6 +256,14 @@ class Provider:
         )
         prompt += "\nPOLICY:\n" + self.policy
         prompt += "\nSPEAKER AND CONTEXT GUIDANCE:\n" + GUIDANCE
+        if mode == "translate" and target.lower() in {"russian", "ru", "русский"}:
+            prompt += (
+                "\nWrite Russian words entirely in Cyrillic, without Latin lookalikes. "
+                "Preserve genuine source identifiers, names and protected tokens. "
+                "If an item contains validation_feedback, correct that concrete defect "
+                "by translating its english again. rejected_translation is an invalid "
+                "draft, never a trusted example."
+            )
         if mode in {"critic", "verify"}:
             prompt += "\nIf an entry has human_review_flag, treat its translation as suspect, never as a trusted example. Check meaning against the source and surrounding context, speaker references, grammar, register, omissions, additions, script alphabet and protected placeholders. Do not invent a correction merely because a flag exists. Explain concrete problems or why the translation is valid."
             if self.settings.get("marked_review"):
@@ -378,16 +393,9 @@ def _process_record_direct(provider, stage, entry):
                 error = register_error(source, text)
                 if error:
                     return error
-                source_words = set(
-                    re.findall(r"[A-Za-zА-Яа-яЁё]+", TOKEN.sub("", source))
-                )
-                for word in re.findall(r"[A-Za-zА-Яа-яЁё]+", TOKEN.sub("", text)):
-                    if (
-                        re.search("[A-Za-z]", word)
-                        and re.search("[А-Яа-яЁё]", word)
-                        and word not in source_words
-                    ):
-                        return "Смешаны латиница и кириллица внутри слова: " + word
+                word = mixed_script_word(source, text)
+                if word:
+                    return mixed_script_message(word)
                 if (
                     len(re.findall(r"[A-Za-z]+", source)) > 3
                     and len(re.findall(r"[A-Za-z]+", text)) > 3
@@ -411,9 +419,70 @@ def _process_record_direct(provider, stage, entry):
             )
         text = one_item(provider.call("translate", [entry]), entry["id"]).get("text")
         error = check(entry["english"], text)
+        repaired = False
+        if (
+            error.startswith(MIXED_SCRIPT_PREFIX)
+            and getattr(provider, "kind", "") == "local"
+        ):
+            # One additional local request only; never loop or charge a cloud retry.
+            # All original invariants also apply to the correction before it is saved.
+            target = repair_entry(entry, text, error)
+            fits = getattr(provider, "fits_request", None)
+            if fits:
+                # Keep the target and project rules; trim optional references only.
+                for key in (
+                    "context_before",
+                    "context_after",
+                    "confirmed_character_examples",
+                    "project_memory",
+                    "context_questions",
+                ):
+                    target[key] = list(target.get(key, []))
+                while not fits("translate", [target]):
+                    before, after = target["context_before"], target["context_after"]
+                    if before and (not after or len(before) >= len(after)):
+                        before.pop(0)
+                    elif after:
+                        after.pop()
+                    else:
+                        key = next(
+                            (
+                                k
+                                for k in (
+                                    "confirmed_character_examples",
+                                    "project_memory",
+                                    "context_questions",
+                                )
+                                if target[k]
+                            ),
+                            None,
+                        )
+                        if key is None:
+                            raise ScriptRepairFailed(
+                                error
+                                + " Автоисправление не помещается в контекст модели."
+                            )
+                        target[key].pop()
+            try:
+                text = one_item(provider.call("translate", [target]), entry["id"]).get(
+                    "text"
+                )
+                error = check(entry["english"], text)
+            except (OutputTruncated, RequestTooLarge):
+                raise
+            except (ValueError, KeyError, TypeError) as failure:
+                raise ScriptRepairFailed(
+                    str(failure) + " Автоисправление алфавита не прошло проверку."
+                ) from None
+            repaired = True
         if error:
-            raise ValueError(error)
-        return text, ""
+            suffix = " Автоисправление алфавита не прошло проверку." if repaired else ""
+            raise (ScriptRepairFailed if repaired else ValueError)(error + suffix)
+        return text, (
+            "Автоисправлено смешение алфавитов; перевод проверен повторно"
+            if repaired
+            else ""
+        )
     events = []
     result = review_entries([entry], provider.call, check, events.append)
     if any(e.get("status") in {"uncertain", "rejected", "unchanged"} for e in events):

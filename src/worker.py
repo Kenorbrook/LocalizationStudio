@@ -4,6 +4,7 @@ from core import Store, now, dump
 from providers import Provider, ServiceUnavailable, process_record
 from speaker_context import context_entry
 from long_text import JobStopped
+from script_validation import ScriptRepairFailed
 
 
 def run(store, jid, provider_factory=Provider):
@@ -183,6 +184,8 @@ def run(store, jid, provider_factory=Provider):
                             last = None
                             break
                         except ServiceUnavailable:
+                            raise
+                        except ScriptRepairFailed:
                             raise
                         except (ValueError, KeyError, TypeError) as e:
                             last = e
