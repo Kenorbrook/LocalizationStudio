@@ -237,9 +237,10 @@ class ErrorCatalogTests(unittest.TestCase):
                 r[0]
                 for r in db.execute(
                     "select id from records where file=(select id from files where path=?)",
-                    (str(corpus),),
+                    (str(corpus.resolve()),),
                 )
             ]
+            self.assertEqual(len(ids), 101)
             for rid in ids:
                 for _ in range(3):
                     db.execute(
