@@ -281,3 +281,37 @@ class ScriptRepairTests(unittest.TestCase):
         )
         self.assertIn("validation_feedback", provider.prompt("translate"))
         self.assertIn("rejected_translation", provider.prompt("translate"))
+
+    def test_semen_homoglyph_regression_in_neutral_sample(self):
+        for broken in ["Сemen", "Сеmen", "cпepмa"]:
+            with self.subTest(broken=broken):
+                model = Model(f"Образец: {broken}.", "Образец: сперма.")
+                result, reason = process_record(
+                    model, "translate", self.entry("Sample: semen.")
+                )
+                self.assertEqual(result, "Образец: сперма.")
+                self.assertIn("Автоисправлено", reason)
+                self.assertEqual(len(model.calls), 2)
+                self.assertIn(broken, model.calls[1]["validation_feedback"])
+                self.assertEqual(model.calls[1]["english"], "Sample: semen.")
+
+    def test_valid_russian_terms_and_name_are_not_mixed_script(self):
+        for source, text in [
+            ("Sample: semen.", "Образец: сперма."),
+            ("A seed sprouted.", "Семя проросло."),
+            ("Semyon called.", "Семён позвонил."),
+        ]:
+            with self.subTest(source=source):
+                model = Model(text)
+                self.assertEqual(
+                    process_record(model, "translate", self.entry(source))[0], text
+                )
+                self.assertEqual(len(model.calls), 1)
+
+    def test_semen_repair_keeps_sample_identifier(self):
+        model = Model("[sample_id]: Сemen.", "[sample_id]: сперма.")
+        result, _ = process_record(
+            model, "translate", self.entry("[sample_id]: semen.")
+        )
+        self.assertEqual(result, "[sample_id]: сперма.")
+        self.assertEqual(len(model.calls), 2)
