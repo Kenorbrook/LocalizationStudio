@@ -65,7 +65,7 @@ class LifecycleTests(unittest.TestCase):
             db.execute("UPDATE jobs SET state='done' WHERE id=?", (j,))
         return j
 
-    def test_auto_complete_and_explicit_restore(self):
+    def test_explicit_archive_and_restore(self):
         self.finish(self.pid, self.rid)
         self.store.archive_completed()
         self.assertEqual([p["id"] for p in self.store.completed_projects()], [self.pid])
@@ -83,10 +83,15 @@ class LifecycleTests(unittest.TestCase):
         self.store.archive_completed()
         self.assertFalse(self.store.completed_projects())
 
-    def test_auto_complete_waits_for_unsaved_editor(self):
+    def test_completed_translation_remains_selected_with_or_without_editor(self):
         self.finish(self.pid, self.rid)
         self.assertEqual(state(self.store, self.pid, editing=True)["project"], self.pid)
-        self.assertEqual(state(self.store, self.pid)["project"], self.other)
+        self.assertEqual(state(self.store, self.pid)["project"], self.pid)
+        self.assertEqual(state(self.store, self.other)["project"], self.other)
+        visible = {p["id"] for p in state(self.store, self.other)["projects"]}
+        self.assertIn(self.pid, visible)
+        self.assertFalse(self.store.completed_projects())
+        self.assertEqual(self.store.record(self.rid)["text"], "Привет")
 
     def test_removed_ids_are_never_reused(self):
         jid = self.store.create_job(self.other, "translate", "local", {})

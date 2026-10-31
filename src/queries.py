@@ -92,7 +92,6 @@ def state(store, project, editing=False):
         from job_chain import schedule
 
         schedule(store, project)
-    store.archive_completed(project if editing else 0)
     with store.db() as db:
         projects = [
             dict(r)
