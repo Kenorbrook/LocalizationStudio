@@ -343,7 +343,14 @@ def main():
             try:
                 shutil.rmtree(fixture)
                 break
-            except PermissionError:
+            except OSError as error:
+                if (
+                    not isinstance(error, (PermissionError, FileNotFoundError))
+                    and getattr(error, "winerror", None) != 145
+                ):
+                    raise
+                if not fixture.exists():
+                    break
                 if attempt == 59:
                     raise
                 time.sleep(0.25)

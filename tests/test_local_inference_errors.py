@@ -1,13 +1,23 @@
 import io
 import json
 import tempfile
+import threading
+import socket
+import time
 import unittest
 import urllib.error
 from pathlib import Path
 from unittest.mock import Mock, patch
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from core import Store
-from providers import LocalInferenceError, Provider, ServiceUnavailable, json_request
+from providers import (
+    LOCAL_CHAT_TIMEOUT,
+    LocalInferenceError,
+    Provider,
+    ServiceUnavailable,
+    json_request,
+)
 from worker import run
 
 
@@ -78,6 +88,134 @@ class LocalInferenceErrorTests(unittest.TestCase):
         ):
             json_request("http://127.0.0.1:11434/api/chat", {}, local=True)
 
+    def test_only_local_inference_receives_the_longer_timeout(self):
+        for url, data, local, expected in [
+            ("http://127.0.0.1:11434/api/chat", {}, True, 600),
+            ("http://127.0.0.1:11434/api/tags", None, True, 4),
+            ("https://example.invalid/chat/completions", {}, False, 180),
+        ]:
+            opener = Mock()
+            opener.open.return_value = io.BytesIO(b"{}")
+            with (
+                patch("providers.DIRECT", opener),
+                patch("providers.urllib.request.build_opener", return_value=opener),
+            ):
+                self.assertEqual(json_request(url, data, local=local), {})
+            self.assertEqual(opener.open.call_args.kwargs["timeout"], expected)
+
+    def test_timeout_and_reset_with_live_service_are_safe_record_errors(self):
+        for failure in [
+            TimeoutError("private source"),
+            urllib.error.URLError(TimeoutError("private source")),
+            ConnectionResetError("private source"),
+        ]:
+            with patch(
+                "providers.DIRECT.open",
+                side_effect=[failure, io.BytesIO(b'{"version":"fixture"}')],
+            ) as request:
+                with self.assertRaises(LocalInferenceError) as error:
+                    json_request("http://127.0.0.1:11434/api/chat", {}, local=True)
+            self.assertIn("Ollama доступна", str(error.exception))
+            self.assertNotIn("private", str(error.exception))
+            self.assertEqual(
+                request.call_args_list[0].kwargs["timeout"], LOCAL_CHAT_TIMEOUT
+            )
+            self.assertEqual(
+                request.call_args_list[1].args[0].full_url,
+                "http://127.0.0.1:11434/api/version",
+            )
+            if isinstance(getattr(failure, "reason", failure), TimeoutError):
+                self.assertIn("600 с", str(error.exception))
+
+    def test_timeout_with_unreachable_service_remains_a_real_outage(self):
+        with patch(
+            "providers.DIRECT.open",
+            side_effect=[TimeoutError(), urllib.error.URLError("offline")],
+        ):
+            with self.assertRaisesRegex(ServiceUnavailable, "Ollama недоступна"):
+                json_request("http://127.0.0.1:11434/api/chat", {}, local=True)
+
+    def test_failed_health_check_closes_its_response(self):
+        error = self.http_error("http://127.0.0.1:11434/api/version", 503)
+        with (
+            patch.object(error, "close", wraps=error.close) as close,
+            patch("providers.DIRECT.open", side_effect=[TimeoutError(), error]),
+        ):
+            with self.assertRaises(ServiceUnavailable):
+                json_request("http://127.0.0.1:11434/api/chat", {}, local=True)
+        close.assert_called_once()
+
+    def test_cloud_transport_errors_do_not_probe_local_ollama(self):
+        opener = Mock()
+        opener.open.side_effect = TimeoutError("private text")
+        with (
+            patch("providers.DIRECT.open") as local,
+            patch("providers.urllib.request.build_opener", return_value=opener),
+        ):
+            with self.assertRaises(ServiceUnavailable):
+                json_request("https://example.invalid/chat/completions", {})
+        local.assert_not_called()
+
+    def test_health_route_is_read_only_and_never_loads_models(self):
+        from read_routes import read_request
+
+        for online in [True, False]:
+            with (
+                patch(
+                    "read_routes.local_service_available", return_value=online
+                ) as probe,
+                patch("read_routes.available_models") as models,
+            ):
+                self.assertEqual(
+                    read_request(None, "/api/local-status", {}, 0), {"online": online}
+                )
+            probe.assert_called_once_with("http://127.0.0.1:11434")
+            models.assert_not_called()
+
+    def test_real_loopback_timeout_and_disconnect_keep_live_service_distinct(self):
+        mode = ["timeout"]
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+            def do_GET(self):
+                body = b'{"version":"neutral-fixture"}'
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_POST(self):
+                current = mode[0]
+                self.rfile.read(int(self.headers.get("Content-Length", 0)))
+                if current == "timeout":
+                    time.sleep(0.2)
+                self.close_connection = True
+                self.connection.shutdown(socket.SHUT_RDWR)
+                self.connection.close()
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            for failure in ["timeout", "reset"]:
+                mode[0] = failure
+                with (
+                    self.subTest(failure=failure),
+                    patch("providers.LOCAL_CHAT_TIMEOUT", 0.05),
+                ):
+                    with self.assertRaisesRegex(LocalInferenceError, "Ollama доступна"):
+                        json_request(
+                            f"http://127.0.0.1:{server.server_port}/api/chat",
+                            {},
+                            local=True,
+                        )
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join(2)
+
     def test_local_200_error_payload_is_not_a_translation(self):
         provider = Provider(
             {"id": 0, "root": str(Path(__file__).parent), "settings": "{}"},
@@ -92,6 +230,11 @@ class LocalInferenceErrorTests(unittest.TestCase):
             provider.call("translate", [{"id": 1, "english": "Hello."}])
 
     def test_worker_marks_only_failed_line_and_continues_with_retry_budget(self):
+        for failure in ["http500", "timeout", "reset"]:
+            with self.subTest(failure=failure):
+                self.run_record_failure(failure)
+
+    def run_record_failure(self, failure):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             store = Store(root / "test.sqlite3")
@@ -119,7 +262,9 @@ class LocalInferenceErrorTests(unittest.TestCase):
             calls = []
 
             def respond(request, **kwargs):
-                if request.full_url.endswith("/api/tags"):
+                if request.full_url.endswith("/api/version"):
+                    value = {"version": "fixture"}
+                elif request.full_url.endswith("/api/tags"):
                     value = {"models": [{"name": "fixture"}]}
                 else:
                     data = json.loads(request.data)
@@ -129,6 +274,10 @@ class LocalInferenceErrorTests(unittest.TestCase):
                         item["english"] == "This request fails."
                         and data["options"]["num_ctx"] == 8192
                     ):
+                        if failure == "timeout":
+                            raise TimeoutError("private request")
+                        if failure == "reset":
+                            raise ConnectionResetError("private request")
                         raise self.http_error(request.full_url)
                     text = {
                         "Hello.": "Привет.",
@@ -174,7 +323,11 @@ class LocalInferenceErrorTests(unittest.TestCase):
             )
             self.assertEqual(queue, ["done", "error", "done"])
             self.assertEqual(len(errors), 1)
-            self.assertIn("HTTP 500", errors[0]["message"])
+            self.assertIn(
+                "HTTP 500" if failure == "http500" else "Ollama доступна",
+                errors[0]["message"],
+            )
+            self.assertNotIn("private", errors[0]["message"])
             self.assertEqual(json.loads(errors[0]["budget_json"])["configured"], 8192)
             self.assertEqual(calls, ["Hello.", "This request fails.", "Goodbye."])
             retry = store.create_job(

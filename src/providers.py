@@ -9,6 +9,7 @@ from speaker_context import GUIDANCE, project_rules
 from long_text import estimate_tokens, OutputTruncated, RequestTooLarge
 
 DIRECT = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+LOCAL_CHAT_TIMEOUT = 600
 
 
 class ServiceUnavailable(Exception):
@@ -39,6 +40,20 @@ def local_inference_error(details, status=None):
     return LocalInferenceError(
         f"Локальная модель{suffix}: {reason}. Повторите строку через раздел «Ошибки» с другими параметрами контекста и ответа."
     )
+
+
+def local_service_available(url):
+    parsed = urlparse(url)
+    probe = f"{parsed.scheme}://{parsed.netloc}/api/version"
+    try:
+        with DIRECT.open(urllib.request.Request(probe), timeout=4) as response:
+            version = json.load(response).get("version")
+        return isinstance(version, str) and bool(version)
+    except urllib.error.HTTPError as error:
+        error.close()
+        return False
+    except (OSError, ValueError, TypeError, AttributeError):
+        return False
 
 
 class Credential(ctypes.Structure):
@@ -99,6 +114,7 @@ def secret(project, value=None):
 
 
 def json_request(url, data=None, headers=None, local=False):
+    local_chat = local and data is not None and urlparse(url).path == "/api/chat"
     req = urllib.request.Request(
         url,
         None if data is None else dump(data).encode(),
@@ -106,7 +122,10 @@ def json_request(url, data=None, headers=None, local=False):
     )
     try:
         with (DIRECT if local else urllib.request.build_opener()).open(
-            req, timeout=180 if data else 4
+            req,
+            timeout=(
+                LOCAL_CHAT_TIMEOUT if local_chat else 180 if data is not None else 4
+            ),
         ) as r:
             return json.load(r)
     except urllib.error.HTTPError as e:
@@ -135,6 +154,21 @@ def json_request(url, data=None, headers=None, local=False):
             f"Ошибка провайдера HTTP {e.code}; проверьте адрес, доступ и ключ"
         ) from None
     except (urllib.error.URLError, TimeoutError, OSError) as e:
+        if local_chat:
+            if local_service_available(url):
+                reason = getattr(e, "reason", e)
+                detail = (
+                    f"Ответ локальной модели не получен за {LOCAL_CHAT_TIMEOUT} с"
+                    if isinstance(reason, TimeoutError)
+                    else "Соединение оборвалось во время ответа локальной модели"
+                )
+                raise LocalInferenceError(
+                    detail
+                    + ". Ollama доступна; готовый ответ на этот запрос не получен."
+                ) from None
+            raise ServiceUnavailable(
+                "Ollama недоступна на 127.0.0.1:11434: не отвечает проверка сервиса. Очередь сохранена на паузе; после восстановления связи нажмите «Продолжить»."
+            ) from None
         raise ServiceUnavailable(
             "Нет связи с моделью. Прогресс сохранён; можно продолжить"
         ) from None

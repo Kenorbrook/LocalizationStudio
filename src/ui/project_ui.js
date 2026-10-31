@@ -45,6 +45,35 @@ projectPulse.id = "projectPulse";
 $("projects").after(projectPulse);
 let activityVersion = "",
   pulseVersion = "";
+const localConnection = (() => {
+  let pending = false;
+  function show(value) {
+    setText(
+      $("connection"),
+      value.online
+        ? "● Ollama подключена · без VPN"
+        : "Ollama недоступна · импорт и правки работают",
+    );
+    $("connection").title =
+      "Последняя проверка: " + new Date().toLocaleTimeString("ru");
+  }
+  async function refresh() {
+    if (pending) return;
+    pending = true;
+    try {
+      show(await request("local-status"));
+    } catch {
+      // The regular application refresh reports a disconnected Studio server.
+    } finally {
+      pending = false;
+    }
+  }
+  studioLifecycle.register("localModels", "connectionHealth", show);
+  window.addEventListener("DOMContentLoaded", () =>
+    setInterval(refresh, 30000),
+  );
+  return { refresh };
+})();
 studioLifecycle.register("mcpInfo", "connectionStatus", () => {
   $("infoContent").prepend(element("p", mcpStatus.textContent));
 });

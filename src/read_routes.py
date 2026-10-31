@@ -1,6 +1,7 @@
 """Read-only API routes, separate from HTTP authentication and framing."""
 
 from providers import models as available_models
+from providers import local_service_available
 from queries import (
     state as project_state,
     records as file_records,
@@ -90,6 +91,10 @@ def models(store, q, port):
     return data
 
 
+def local_status(store, q, port):
+    return {"online": local_service_available("http://127.0.0.1:11434")}
+
+
 def history(store, q, port):
     with store.db() as db:
         data = [
@@ -177,6 +182,7 @@ ROUTES = {
     "/api/marked": marked,
     "/api/connections": connections,
     "/api/models": models,
+    "/api/local-status": local_status,
     "/api/history": history,
     "/api/proposals": proposals,
     "/api/current": current,
