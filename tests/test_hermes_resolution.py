@@ -471,6 +471,219 @@ class HermesResolutionTests(unittest.TestCase):
                 "paused",
             )
 
+    def test_dispute_is_rewritten_using_all_remarks_then_saved_after_verification(self):
+        snap = self.snapshot(2)
+        rewrite = self.proposal(snap, "fix", "Перевод по работе произошёл неожиданно.")
+        rejected = {
+            **self.verifier(snap, "reject"),
+            "reason": "Неоднозначное слово; вырази действие иначе.",
+        }
+        replies = iter(
+            [
+                self.proposal(snap, "fix", "Переезд произошёл неожиданно."),
+                self.verifier(snap, "keep"),
+                rejected,
+                rewrite,
+                self.verifier(snap),
+            ]
+        )
+        calls = []
+
+        def request(prompt):
+            calls.append(json.loads(prompt.split("\nDATA:\n")[1]))
+            return json.dumps(next(replies))
+
+        resolution.run(self.controller, self.project, request)
+        self.assertEqual(len(calls), 5)
+        revised = calls[3]
+        self.assertEqual(revised["entry"], calls[0]["entry"])
+        self.assertEqual(
+            revised["repair_feedback"]["attempts"][0]["keep_check"]["verification"][
+                "reason"
+            ],
+            rejected["reason"],
+        )
+        self.assertIn("repair_feedback", calls[4])
+        self.assertIn("Предложи ДРУГУЮ", calls[3]["repair_feedback"]["instruction"])
+        self.assertIn("Проверь ТОЛЬКО", calls[4]["repair_feedback"]["instruction"])
+        self.assertNotIn("Предложи ДРУГУЮ", calls[4]["repair_feedback"]["instruction"])
+        self.assertEqual(self.store.record(2)["text"], rewrite["text"])
+        with self.store.db() as db:
+            reason = json.loads(
+                db.execute(
+                    "SELECT reason FROM history WHERE record=2 ORDER BY id DESC LIMIT 1"
+                ).fetchone()[0]
+            )
+            self.assertEqual(len(reason["attempts"]), 2)
+            self.assertEqual(
+                db.execute("SELECT count(*) FROM errors WHERE resolved=0").fetchone()[
+                    0
+                ],
+                0,
+            )
+
+    def test_disagreement_stops_at_three_variants_and_seven_requests(self):
+        snap = self.snapshot(2)
+        replies = iter(
+            [
+                self.proposal(snap, "fix", "Первый перевод по работе."),
+                self.verifier(snap, "keep"),
+                self.verifier(snap, "reject"),
+                self.proposal(snap, "fix", "Второй перевод по работе."),
+                self.verifier(snap, "uncertain"),
+                self.proposal(snap, "fix", "Третий перевод по работе."),
+                self.verifier(snap, "reject"),
+            ]
+        )
+        calls = []
+
+        def request(prompt):
+            calls.append(prompt)
+            return json.dumps(next(replies))
+
+        resolution.run(self.controller, self.project, request)
+        self.assertEqual(len(calls), 7)
+        report = json.loads(
+            (self.controller.root / f"project-{self.project}-report.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        outcome = report["outcomes"][0]
+        self.assertEqual(
+            (outcome["action"], outcome["calls"], len(outcome["attempts"])),
+            ("attention", 7, 3),
+        )
+        self.assertEqual(self.store.record(2)["revision"], 0)
+        self.assertEqual(resolution.pending(self.store, self.project)["eligible"], 1)
+
+    def test_duplicate_wording_is_not_reverified_and_new_variant_can_succeed(self):
+        snap = self.snapshot(2)
+        replies = iter(
+            [
+                self.proposal(snap),
+                self.verifier(snap, "reject"),
+                self.proposal(snap),
+                self.proposal(snap, "fix", "По работе его перевели неожиданно."),
+                self.verifier(snap),
+            ]
+        )
+        calls = []
+
+        def request(prompt):
+            calls.append(json.loads(prompt.split("\nDATA:\n")[1]))
+            return json.dumps(next(replies))
+
+        resolution.run(self.controller, self.project, request)
+        self.assertEqual(len(calls), 5)
+        self.assertNotIn("proposal", calls[3])
+        self.assertIn(
+            "Повторён", calls[3]["repair_feedback"]["attempts"][1]["rejection"]
+        )
+        self.assertEqual(self.controller.status["repair_progress"]["fix"], 1)
+
+    def test_cancel_after_rejected_verdict_does_not_start_another_variant(self):
+        snap = self.snapshot(2)
+        count = 0
+
+        def request(_):
+            nonlocal count
+            count += 1
+            if count == 2:
+                self.controller.cancelled.set()
+                return json.dumps(self.verifier(snap, "reject"))
+            return json.dumps(self.proposal(snap))
+
+        resolution.run(self.controller, self.project, request)
+        self.assertEqual(count, 2)
+        self.assertEqual(self.store.record(2)["revision"], 0)
+        report = json.loads(
+            (self.controller.root / f"project-{self.project}-report.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertTrue(report["cancelled"])
+        self.assertEqual(report["interrupted"]["calls"], 2)
+
+    def test_manual_edit_during_refinement_is_never_overwritten(self):
+        snap = self.snapshot(2)
+        count = 0
+
+        def request(_):
+            nonlocal count
+            count += 1
+            if count == 1:
+                return json.dumps(self.proposal(snap))
+            if count == 2:
+                return json.dumps(self.verifier(snap, "reject"))
+            if count == 3:
+                self.store.update(
+                    2,
+                    0,
+                    "Сохранённая ручная правка.",
+                    "translated",
+                    "human",
+                    manual=True,
+                )
+                return json.dumps(
+                    self.proposal(snap, "fix", "Отца неожиданно перевели по работе.")
+                )
+            return json.dumps(self.verifier(snap))
+
+        resolution.run(self.controller, self.project, request)
+        self.assertEqual(self.store.record(2)["text"], "Сохранённая ручная правка.")
+        self.assertEqual(self.store.record(2)["manual"], 1)
+        with self.store.db() as db:
+            self.assertEqual(
+                db.execute(
+                    "SELECT count(*) FROM history WHERE reviewer LIKE 'Hermes:%'"
+                ).fetchone()[0],
+                0,
+            )
+
+    def test_invalid_refined_text_preserves_error_and_attempt_counters(self):
+        snap = self.snapshot(2)
+        replies = iter(
+            [
+                self.proposal(snap),
+                self.verifier(snap, "reject"),
+                self.proposal(snap, "fix", "Перевоd по работе."),
+            ]
+        )
+        resolution.run(
+            self.controller, self.project, lambda _: json.dumps(next(replies))
+        )
+        report = json.loads(
+            (self.controller.root / f"project-{self.project}-report.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertEqual(report["outcomes"][0]["calls"], 3)
+        self.assertEqual(len(report["outcomes"][0]["attempts"]), 2)
+        self.assertEqual(self.store.record(2)["revision"], 0)
+
+    def test_failed_keep_is_not_rechecked_after_it_was_already_rejected(self):
+        snap = self.snapshot(2)
+        replies = iter(
+            [
+                self.proposal(snap),
+                self.verifier(snap, "reject"),
+                self.proposal(snap, "fix", "Первый вариант перевода по работе."),
+                self.verifier(snap, "keep"),
+                self.proposal(snap, "fix", "Его перевели по работе неожиданно."),
+                self.verifier(snap),
+            ]
+        )
+        calls = []
+
+        def request(prompt):
+            calls.append(json.loads(prompt.split("\nDATA:\n")[1]))
+            return json.dumps(next(replies))
+
+        resolution.run(self.controller, self.project, request)
+        self.assertEqual(len(calls), 6)
+        self.assertNotIn("proposal", calls[4])
+        self.assertEqual(self.controller.status["repair_progress"]["fix"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

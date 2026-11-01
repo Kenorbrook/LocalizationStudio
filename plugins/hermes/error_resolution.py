@@ -209,7 +209,7 @@ source_excerpt — контекст, не цель перевода. Учиты�
 """ + GUIDANCE
 
 
-def prompt(snapshot, proposal=None):
+def prompt(snapshot, proposal=None, feedback=None):
     task = (
         'Прими решение. Формат: {"record":ID,"revision":REV,"action":"fix|keep|uncertain",'
         '"text":"полный перевод (для keep точно текущий)","reason":"обоснование",'
@@ -225,6 +225,18 @@ def prompt(snapshot, proposal=None):
         '"evidence":[{"record":ID_ИЗ_КОНТЕКСТА,"quote":"точная цитата оригинала"}]}.'
     )
     data = {**snapshot["data"]}
+    if feedback:
+        instruction = (
+            "Предыдущие версии не согласованы. Проверь замечания по оригиналу и соседям; они тоже могут быть ошибочны. Предложи ДРУГУЮ естественную формулировку, которая устраняет конкретные возражения, сохраняя смысл. При споре о многозначном слове можно описать подтверждённое действие другими словами. Не спорь по кругу о том же тексте и не возвращай отклонённую версию. Факты из соседних исходных реплик допустимы; не добавляй неподтверждённые детали. Если данных действительно недостаточно, выбери uncertain."
+            if proposal is None
+            else "Это история разногласий, а не задание на переписывание. Проверь ТОЛЬКО текущий proposal по исходнику и контексту. Не отклоняй точный естественный перевод лишь потому, что можно придумать другую или более изящную формулировку. Уточнения, подтверждённые соседними исходными репликами, не являются выдуманными фактами. Старые вердикты могут быть ошибочны. Для корректного текущего варианта верни confirm."
+        )
+        data["repair_feedback"] = {
+            "attempts": feedback,
+            "instruction": instruction,
+        }
+        if proposal is None:
+            task += " Это доработка после разногласий: найди новый точный вариант с учётом всех замечаний в repair_feedback, а не повтор прежнего решения."
     if proposal is not None:
         data["proposal"] = proposal
     result = (
@@ -328,7 +340,7 @@ def backup(store, folder):
             source.backup(destination)
 
 
-def commit(store, snapshot, proposal, verification, model):
+def commit(store, snapshot, proposal, verification, model, attempts=None):
     """CAS, snapshot/history and error resolution are a single transaction."""
     parse(json.dumps(proposal), snapshot)
     parse(json.dumps(verification), snapshot, verification=True)
@@ -411,6 +423,7 @@ def commit(store, snapshot, proposal, verification, model):
                 "reason": proposal["reason"],
                 "evidence": proposal["evidence"],
                 "verification": verification,
+                "attempts": attempts or [],
             },
             ensure_ascii=False,
         )
@@ -499,6 +512,13 @@ def run(controller, project, request):
                 report += f"Передано контекста: {context['before']} до / {context['after']} после · тип: {kind} · исходный сценарий: {original}\n"
             if "before" in outcome:
                 report += f"Было: {outcome['before']}\nСтало: {outcome['after']}\n"
+            if outcome.get("attempts"):
+                report += f"Вариантов рассмотрено: {len(outcome['attempts'])} · запросов Hermes: {outcome['calls']}\n"
+                for attempt in outcome["attempts"]:
+                    if attempt.get("rejection"):
+                        report += (
+                            f"Попытка {attempt['round']}: {attempt['rejection']}\n"
+                        )
         value = {**result, "counts": counts, "text": report}
         for outcome in outcomes:
             item = items_by_id[outcome["record"]]
@@ -534,53 +554,25 @@ def run(controller, project, request):
                 resolution_label=f"Разбор ошибки {index+1}/{result['total']} · строка #{item['record']}",
                 message=f"Разбор ошибки {index+1}/{result['total']} · строка #{item['record']}",
             )
-            proposal = parse(request(prompt(snapshot)), snapshot)
-            if controller.cancelled.is_set():
-                break
-            if proposal["action"] == "uncertain":
-                outcomes.append(
-                    {
-                        "record": item["record"],
-                        "action": "attention",
-                        "reason": proposal["reason"],
-                        "context": context,
-                    }
-                )
-                publish()
-                continue
-            controller._set(
-                resolution_label=f"Проверка решения {index+1}/{result['total']} · строка #{item['record']}",
-                message=f"Проверка решения {index+1}/{result['total']} · строка #{item['record']}",
-            )
-            verification = parse(
-                request(prompt(snapshot, proposal)), snapshot, verification=True
-            )
-            if controller.cancelled.is_set():
-                break
-            if verification["verdict"] == "keep" and proposal["action"] == "fix":
-                proposal = parse(
-                    json.dumps(
-                        {
-                            "record": item["record"],
-                            "revision": snapshot["row"]["revision"],
-                            "action": "keep",
-                            "text": snapshot["row"]["text"],
-                            "reason": verification["reason"],
-                            "evidence": verification["evidence"],
-                        }
+            from .decision_loop import resolve
+
+            def progress(value):
+                phase = {
+                    "proposal": (
+                        "Новая формулировка" if value["round"] > 1 else "Разбор"
                     ),
-                    snapshot,
-                )
-                controller._set(
-                    resolution_label=f"Подтверждение текущего перевода · строка #{item['record']}"
-                )
-                verification = parse(
-                    request(prompt(snapshot, proposal)), snapshot, verification=True
-                )
-                if controller.cancelled.is_set():
-                    break
-            if verification["verdict"] != "confirm":
-                raise ValueError("Проверка решения: " + verification["reason"])
+                    "verify": "Проверка варианта",
+                    "keep_check": "Проверка текущего перевода",
+                    "accepted": "Решение подтверждено",
+                }[value["phase"]]
+                label = f"{phase} · строка #{item['record']} · вариант {value['round']}/{value['max_variants']} · запрос {value['calls']}/{value['max_calls']}"
+                controller._set(resolution_label=label, message=label)
+                result["active"] = {"record": item["record"], **value}
+                publish()
+
+            proposal, verification, attempts, calls = resolve(
+                snapshot, request, controller.cancelled, progress
+            )
             # Serialize cancellation with the commit: no write can start after cancel returns.
             with controller.lock:
                 if controller.cancelled.is_set():
@@ -591,6 +583,7 @@ def run(controller, project, request):
                     proposal,
                     verification,
                     controller.preferences["model"],
+                    attempts=attempts,
                 )
             outcomes.append(
                 {
@@ -600,6 +593,10 @@ def run(controller, project, request):
                     "before": snapshot["row"]["text"],
                     "after": proposal["text"],
                     "context": context,
+                    "attempts": attempts,
+                    "calls": calls,
+                    "revision": snapshot["row"]["revision"],
+                    "error": item["error"],
                 }
             )
         except (ValueError, TypeError, KeyError, OSError) as error:
@@ -611,10 +608,16 @@ def run(controller, project, request):
                     "action": "attention",
                     "reason": str(error)[:4000],
                     "context": context,
+                    "attempts": getattr(error, "attempts", []),
+                    "calls": getattr(error, "calls", 0),
                 }
             )
+        result.pop("active", None)
         publish()
     result["cancelled"] = controller.cancelled.is_set()
+    active = result.pop("active", None)
+    if result["cancelled"] and active:
+        result["interrupted"] = active
     controller._set(resolution_label="")
     publish()
     return f"Обработано {len(outcomes)} из {result['total']}. Результаты сохранены; неясные случаи остались в ошибках."

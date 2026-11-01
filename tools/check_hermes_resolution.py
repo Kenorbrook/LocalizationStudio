@@ -26,7 +26,14 @@ from inspection_client import inspect_app
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--live", action="store_true")
+    parser.add_argument(
+        "--dispute",
+        action="store_true",
+        help="Replay an initial contradictory review, then use real local Hermes for new wording and verification",
+    )
     args = parser.parse_args()
+    if args.dispute and not args.live:
+        parser.error("--dispute requires --live")
     parent = ROOT / "qa-knowledge"
     fixture = guard(parent / ("hermes-resolution-" + uuid.uuid4().hex))
     fixture.mkdir(parents=True)
@@ -54,6 +61,13 @@ def main():
             ),
             encoding="utf-8",
         )
+        if args.dispute:
+            records = json.loads(corpus.read_text(encoding="utf-8"))[:2]
+            records[1].update(
+                source="The transfer happened all of sudden last year.",
+                translation="Перевод случился совершенно неожиданно в прошлом году.",
+            )
+            corpus.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
         store.import_files(project, [corpus])
         settings = {
             "model": "neutral-fixture",
@@ -63,7 +77,7 @@ def main():
         with store.db() as db:
             db.execute("UPDATE projects SET settings=?", (json.dumps(settings),))
         job = store.create_job(project, "review", "local", settings)
-        for record in (2, 3, 4):
+        for record in ((2,) if args.dispute else (2, 3, 4)):
             store.error(
                 job, record, "Редактор не подтвердил результат: нужна проверка смысла"
             )
@@ -133,6 +147,41 @@ def main():
                 str(request),
                 str(actual_source),
             ]
+            replay_count, real_count = 0, 0
+            if args.dispute:
+                evidence = [
+                    {"record": 1, "quote": "My father was transferred at work."}
+                ]
+                common = {"record": 2, "revision": 0, "evidence": evidence}
+                replay = [
+                    {
+                        **common,
+                        "action": "fix",
+                        "text": "Переезд случился совершенно неожиданно в прошлом году.",
+                        "reason": "Transfer означает переезд по работе; слово перевод неоднозначно.",
+                    },
+                    {
+                        **common,
+                        "verdict": "keep",
+                        "reason": "Перевод по работе — корректное значение transfer; текущий перевод допустим.",
+                    },
+                    {
+                        **common,
+                        "verdict": "reject",
+                        "reason": "Оставлять слово перевод неоднозначно. Нужна другая формулировка, передающая перевод по работе без дополнительных фактов.",
+                    },
+                ]
+                original_request = controller._request
+
+                def contextual_request(payload):
+                    nonlocal replay_count, real_count
+                    if payload.get("resolution") and replay:
+                        replay_count += 1
+                        return {"text": json.dumps(replay.pop(0), ensure_ascii=False)}
+                    real_count += 1
+                    return original_request(payload)
+
+                controller._request = contextual_request
             controller.run(project, "repair_errors")
             deadline = time.monotonic() + 3600
             while controller.busy:
@@ -146,18 +195,43 @@ def main():
             )
             saved["phase"] = controller.status["phase"]
             saved["message"] = controller.status["message"]
+            saved["replayed_initial_dispute"] = replay_count
+            saved["real_model_requests"] = real_count
             log = controller.root / "activity.log"
             if log.exists():
                 (ROOT / "reports/hermes-resolution-neutral-runtime.txt").write_text(
                     log.read_text(encoding="utf-8", errors="replace"), encoding="utf-8"
                 )
-            (ROOT / "reports/hermes-resolution-live.json").write_text(
+            output = (
+                "hermes-resolution-dispute.json"
+                if args.dispute
+                else "hermes-resolution-live.json"
+            )
+            (ROOT / "reports" / output).write_text(
                 json.dumps(saved, ensure_ascii=False, indent=2), encoding="utf-8"
             )
             print(
                 json.dumps({"phase": saved["phase"], "counts": saved["counts"]}),
                 flush=True,
             )
+            if args.dispute:
+                assert saved["phase"] == "ready" and saved["counts"] == {
+                    "fix": 1,
+                    "keep": 0,
+                    "attention": 0,
+                }, saved
+                outcome = saved["outcomes"][0]
+                assert (
+                    replay_count == 3
+                    and real_count >= 2
+                    and outcome["calls"] <= 7
+                    and len(outcome["attempts"]) >= 2
+                ), saved
+                assert (
+                    store.record(2)["text"]
+                    != "Перевод случился совершенно неожиданно в прошлом году."
+                )
+                return
             assert (
                 saved["phase"] == "ready"
                 and saved["counts"]["fix"] >= 1

@@ -29,7 +29,7 @@ void (async () => {
       };
       return state;
     };
-    check("independentPluginVersion", (await api.get_plugins()).plugins.some(p => p.id === "hermes" && p.version === "1.1.1"));
+    check("independentPluginVersion", (await api.get_plugins()).plugins.some(p => p.id === "hermes" && p.version === "1.2.0"));
     check("primaryActionEnabled", !$("hermesExplainErrors").disabled && $("hermesExplainErrors").textContent.includes("исправить"));
     check("eligibleCountVisible", $("hermesErrorsReason").textContent.includes("3"));
     await $("hermesExplainErrors").onclick();
@@ -41,6 +41,7 @@ void (async () => {
     check("importNavigationHiddenForResolution", $("hermesReportImport").hidden);
     check("stopAvailable", !$("hermesErrorsStop").hidden && !$("stopHermesTask").hidden);
     await $("hermesErrorsStop").onclick();
+    for (let n=0;n<50&&!$("hermesErrorProgress").textContent.includes("Исправлено: 1");n++) await wait(40);
     check("stopUsesPluginCancellation", cancelled);
     check("summaryCountsVisible", $("hermesErrorProgress").textContent.includes("Исправлено: 1") && $("hermesErrorProgress").textContent.includes("Подтверждено: 1"));
     check("emptyEligibleDisablesAction", $("hermesExplainErrors").disabled && $("hermesErrorsReason").textContent.includes("защищены"));
