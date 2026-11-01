@@ -1,16 +1,17 @@
 {
   "id": "hermes",
   "name": "Hermes Agent",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "api_version": 1,
-  "min_app_version": "0.6.0",
-  "description": "Необязательный помощник: отчёты о файлах и ошибках. Сам не импортирует текст и не устанавливает перевод",
+  "min_app_version": "0.7.4",
+  "description": "Локальный разбор и исправление ошибок с контекстом, проверкой и историей. Отчёты о файлах игры",
   "category": "ИИ-помощники",
   "backend": "__init__.py",
   "ui": "ui/entry.js",
   "permissions": [
     "backend",
     "project.read",
+    "project.write",
     "local.model",
     "ui"
   ],

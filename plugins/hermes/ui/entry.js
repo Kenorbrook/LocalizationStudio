@@ -289,7 +289,7 @@ export function create(api) {
     "sub",
   );
   reportScope.id = "hermesReportScope";
-  button(
+  const importFromReport = button(
     "hermesReportImport",
     "Перейти к поиску текста и импорту",
     taskActions,
@@ -305,7 +305,9 @@ export function create(api) {
     if (!project) throw Error("Откройте проект");
     await native.run_hermes(project, mode);
     task.title.textContent =
-      mode === "research" ? "Отчёт о файлах игры" : "Разбор ошибок с Hermes";
+      mode === "research"
+        ? "Отчёт о файлах игры"
+        : "Разбор и исправление ошибок";
     if (!task.dialog.open) task.dialog.showModal();
     await refresh();
   }
@@ -383,10 +385,20 @@ export function create(api) {
   const errorActionsRow = element("div", undefined, "plugin-context-actions");
   const explain = button(
     "hermesExplainErrors",
-    "Разобрать ошибки с Hermes",
+    "Разобрать и исправить с Hermes",
     errorActionsRow,
-    () => runTask("errors"),
+    () => runTask("repair_errors"),
+    "primary",
   );
+  errorActionsRow.append(
+    workspaceUi.help(
+      "Разбирает до 50 ошибок за запуск с соседними репликами и правилами проекта. Каждое исправление или подтверждение проходит отдельную проверку. Принятые решения сохраняются с историей и закрывают ошибку; неясные случаи остаются здесь. Перед запуском создаётся резервная копия. Ручные правки и помеченные строки защищены.",
+      "Как Hermes исправляет ошибки",
+    ),
+  );
+  const errorProgress = element("p", undefined, "sub");
+  errorProgress.id = "hermesErrorProgress";
+  errorProgress.setAttribute("role", "status");
   const errorSetup = button(
     "hermesErrorsSettings",
     "Настроить Hermes",
@@ -401,7 +413,16 @@ export function create(api) {
   );
   const errorReason = element("p", undefined, "sub");
   errorReason.id = "hermesErrorsReason";
-  errorActions.append(errorActionsRow, errorReason);
+  const stopErrors = button(
+    "hermesErrorsStop",
+    "Остановить разбор",
+    errorActionsRow,
+    async () => {
+      await native.cancel_hermes();
+      await refresh();
+    },
+  );
+  errorActions.append(errorActionsRow, errorReason, errorProgress);
   api.mount("project.errors.actions", errorActions);
 
   function render(fill = false) {
@@ -414,9 +435,39 @@ export function create(api) {
       context.value = state.preferences.context;
     }
     const ready = reason();
-    research.disabled = explain.disabled = !!ready;
+    research.disabled = !!ready;
+    explain.disabled = !!ready || !state.error_resolution?.eligible;
     setText(sourceReason, ready || "Модель: " + state.preferences.model);
-    setText(errorReason, ready || "Модель: " + state.preferences.model);
+    setText(
+      errorReason,
+      ready ||
+        (state.error_resolution?.eligible
+          ? `Доступно ошибок: ${state.error_resolution.eligible} · Защищено: ${state.error_resolution.protected}`
+          : "Нет подходящих ошибок. Ручные правки и помеченные строки защищены."),
+    );
+    const progress =
+      Number(state.project) === Number(studioState.project)
+        ? state.repair_progress
+        : null;
+    setText(
+      errorProgress,
+      state.busy && state.report_mode === "repair_errors"
+        ? state.message +
+            (progress ? ` · Обработано ${progress.done}/${progress.total}` : "")
+        : progress
+          ? `Исправлено: ${progress.fix} · Подтверждено: ${progress.keep} · Требуют проверки: ${progress.attention}`
+          : "",
+    );
+    errorProgress.hidden = !errorProgress.textContent;
+    stopErrors.hidden = !state.busy || state.report_mode !== "repair_errors";
+    const resolving = state.report_mode === "repair_errors";
+    setText(
+      reportScope,
+      resolving
+        ? "Подтверждённые решения автоматически сохраняются в проекте с историей. Для верного перевода текст остаётся прежним. Неясные случаи остаются в ошибках. Игровые файлы не изменяются."
+        : "Это отчёт-рекомендация. Hermes не добавил текст в проект, не изменил справочник и не установил перевод в игру.",
+    );
+    importFromReport.hidden = resolving;
     sourceReason.hidden = errorReason.hidden = false;
     viewSourceReport.hidden = !state.report;
     viewErrorReport.hidden = !state.report;

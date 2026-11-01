@@ -25,18 +25,21 @@ else:
     base_url = request.get("base_url", "http://127.0.0.1:11434/v1")
     if urlparse(base_url).hostname != "127.0.0.1":
         raise ValueError("Hermes plugin only uses a local model")
-    from hermes_cli.mcp_startup import ensure_mcp_discovery_before_agent_build
+    if not request.get("resolution"):
+        from hermes_cli.mcp_startup import ensure_mcp_discovery_before_agent_build
 
-    progress.emit("connecting")
-    ensure_mcp_discovery_before_agent_build(
-        logger=logging.getLogger(__name__), single_query=True
-    )
+        progress.emit("connecting")
+        ensure_mcp_discovery_before_agent_build(
+            logger=logging.getLogger(__name__), single_query=True
+        )
     agent = AIAgent(
         model=request["model"],
         provider="custom",
         api_key="ollama",
         base_url=base_url,
-        enabled_toolsets=["mcp-studio"],
+        # The host already captured the exact context and dependencies for a CAS commit.
+        # Additional reads could replace that evidence with a different live revision.
+        enabled_toolsets=[] if request.get("resolution") else ["mcp-studio"],
         max_iterations=MAX_ITERATIONS,
         quiet_mode=True,
         skip_memory=True,
@@ -50,8 +53,13 @@ else:
         tool_start_callback=progress.tool_start,
         tool_complete_callback=progress.tool_complete,
         request_overrides={
-            "max_tokens": MAX_TOKENS,
+            "max_tokens": 2400 if request.get("resolution") else MAX_TOKENS,
             "reasoning_effort": "none",
+            **(
+                {"response_format": {"type": "json_object"}, "temperature": 0.1}
+                if request.get("resolution")
+                else {}
+            ),
         },
     )
     try:

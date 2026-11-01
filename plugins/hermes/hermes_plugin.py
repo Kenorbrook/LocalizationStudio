@@ -99,8 +99,24 @@ class HermesPlugin:
                             )
                         )
                         result["report"] = saved_report["text"][:30000]
+                        result["report_mode"] = saved_report.get("mode", "research")
+                        result.pop("repair_progress", None)
+                        if saved_report.get("mode") == "repair_errors":
+                            result["repair_progress"] = {
+                                **saved_report.get("counts", {}),
+                                "done": len(saved_report.get("outcomes", [])),
+                                "total": saved_report.get("total", 0),
+                            }
                     except (OSError, ValueError, KeyError):
                         result["report"] = ""
+                        result["report_mode"] = "research"
+                        result.pop("repair_progress", None)
+                from .error_resolution import pending
+
+                selected = pending(self.store, project)
+                result["error_resolution"] = {
+                    key: selected[key] for key in ("eligible", "protected", "limit")
+                }
                 result["automatic_retry"] = preference(self.store, project)
                 result["retry_plan"] = plan(self.store, project)
                 for row in result["retry_plan"]["rows"]:
@@ -222,6 +238,7 @@ class HermesPlugin:
             self.store.hermes_inference = phase == "running"
             self.cancelled.clear()
             self.status.update(phase=phase, message="Подготавливаем Hermes…", report="")
+            self.status.pop("repair_progress", None)
 
         def run():
             try:
@@ -271,10 +288,12 @@ class HermesPlugin:
                     while True:
                         elapsed = time.monotonic() - started
                         message = progress_message(progress, elapsed)
-                        self._set(
-                            message=message
+                        message = (
+                            message
                             or f"Запускаем среду Hermes · {int(elapsed)//60:02}:{int(elapsed)%60:02}"
                         )
+                        label = self.status.get("resolution_label", "")
+                        self._set(message=(label + " · " if label else "") + message)
                         if elapsed >= timeout:
                             raise subprocess.TimeoutExpired(command, timeout)
                         try:
@@ -319,7 +338,13 @@ class HermesPlugin:
         payload["progress"] = str(folder / "progress.json")
         with (self.root / "activity.log").open("a", encoding="utf-8") as log:
             purpose = (
-                "проверка среды" if payload.get("check") else "исследование проекта"
+                "проверка среды"
+                if payload.get("check")
+                else (
+                    "решение ошибки"
+                    if payload.get("resolution")
+                    else "исследование проекта"
+                )
             )
             log.write(
                 f"\n[Hermes] Новый запуск {folder.name} · {time.strftime('%Y-%m-%d %H:%M:%S')} · {purpose}\n"
@@ -382,9 +407,19 @@ class HermesPlugin:
             raise ValueError(
                 "Включите и установите плагин Hermes в настройках приложения"
             )
-        if mode not in {"research", "errors"} or not self.preferences["model"]:
+        if (
+            mode not in {"research", "errors", "repair_errors"}
+            or not self.preferences["model"]
+        ):
             raise ValueError("Выберите модель и задачу Hermes")
         project_root(self.store, project)
+        if mode == "repair_errors":
+            from .error_resolution import pending
+
+            if not pending(self.store, project)["rows"]:
+                raise ValueError(
+                    "Нет подходящих ошибок; ручные правки и пометки защищены"
+                )
         # One local GPU must not be competed for by a translating worker and an agent.
         with self.store.db() as db:
             if db.execute(
@@ -398,7 +433,9 @@ class HermesPlugin:
             self.models.validate(
                 self.preferences["model"], self.preferences["context"], configured=True
             )
-            self._set(message="Hermes исследует проект…", project=project)
+            self._set(
+                message="Hermes исследует проект…", project=project, report_mode=mode
+            )
             if getattr(sys, "frozen", False):
                 command, args = str(APP_HOME / "LocalizationWorker.exe"), []
             else:
@@ -417,6 +454,7 @@ class HermesPlugin:
                     "base_url": "http://127.0.0.1:11434/v1",
                     "context_length": self.preferences["context"],
                     "ollama_num_ctx": self.preferences["context"],
+                    "streaming": mode != "repair_errors",
                 },
                 "mcp_servers": {"studio": {"command": command, "args": args}},
                 "platform_toolsets": {"cli": ["mcp-studio"]},
@@ -429,6 +467,26 @@ class HermesPlugin:
             home.mkdir(exist_ok=True)
             # JSON is a YAML subset; no extra YAML parser is needed in Studio.
             (home / "config.yaml").write_text(json.dumps(config), encoding="utf-8")
+            if mode == "repair_errors":
+                from .error_resolution import run
+
+                def request(prompt):
+                    from long_text import estimate_tokens
+
+                    if estimate_tokens(prompt) + 10000 > self.preferences["context"]:
+                        raise ValueError(
+                            "Строка, правила и контекст не помещаются в бюджет Hermes; данные не обрезаны"
+                        )
+                    return self._request(
+                        {
+                            "model": self.preferences["model"],
+                            "context": self.preferences["context"],
+                            "prompt": prompt,
+                            "resolution": True,
+                        }
+                    )["text"]
+
+                return run(self, project, request)
             task = (
                 "Определи движок, где хранятся игровые тексты, какие файлы можно импортировать и для каких архивов нужен отдельный инструмент извлечения."
                 if mode == "research"
