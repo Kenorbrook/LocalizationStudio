@@ -29,7 +29,7 @@ void (async () => {
       };
       return state;
     };
-    check("independentPluginVersion", (await api.get_plugins()).plugins.some(p => p.id === "hermes" && p.version === "1.1.0"));
+    check("independentPluginVersion", (await api.get_plugins()).plugins.some(p => p.id === "hermes" && p.version === "1.1.1"));
     check("primaryActionEnabled", !$("hermesExplainErrors").disabled && $("hermesExplainErrors").textContent.includes("исправить"));
     check("eligibleCountVisible", $("hermesErrorsReason").textContent.includes("3"));
     await $("hermesExplainErrors").onclick();

@@ -9,7 +9,8 @@ import time
 from contextlib import closing
 
 from serialization import now
-from speaker_context import context_entry, project_rules, GUIDANCE
+from speaker_context import project_rules, GUIDANCE
+from .renpy_context import context_entry
 from validation import validate
 from local_editor import register_error
 from script_validation import mixed_script_word, mixed_script_message
@@ -153,6 +154,11 @@ def capture(store, project, item):
         excerpt = "\n".join(lines[max(0, line - 4) : line + 5])
         if lines[line].strip().endswith(":"):
             kind = "menu_choice"
+    origin = entry.get("source_structure", {})
+    if origin.get("status") == "matched":
+        excerpt = origin["excerpt"]
+        if origin.get("line_kind") == "menu_choice":
+            kind = "menu_choice"
     data = {
         "record": row["id"],
         "revision": row["revision"],
@@ -161,7 +167,7 @@ def capture(store, project, item):
         "scene": row["scene"],
         "line_kind": kind,
         "source_excerpt": excerpt[:8000],
-        "excerpt_truncated": len(excerpt) > 8000,
+        "excerpt_truncated": origin.get("truncated", len(excerpt) > 8000),
         "previous_errors": [e["message"][:12000] for e in errors[-3:]],
         "project_rules": rules,
         "source_language": settings.get("source_language", "English"),
@@ -477,6 +483,20 @@ def run(controller, project, request):
         )
         for outcome in outcomes:
             report += f"\n#{outcome['record']} · { {'fix':'Исправлено','keep':'Перевод верен','attention':'Нужна проверка'}[outcome['action']]}\n{outcome['reason']}\n"
+            context = outcome.get("context")
+            if context:
+                kind = (
+                    "пункт меню"
+                    if context["line_kind"] == "menu_choice"
+                    else "реплика или повествование"
+                )
+                status = context.get("original_status")
+                original = (
+                    "найден"
+                    if status == "matched"
+                    else "не подтверждён" if status else "не требуется"
+                )
+                report += f"Передано контекста: {context['before']} до / {context['after']} после · тип: {kind} · исходный сценарий: {original}\n"
             if "before" in outcome:
                 report += f"Было: {outcome['before']}\nСтало: {outcome['after']}\n"
         value = {**result, "counts": counts, "text": report}
@@ -501,8 +521,15 @@ def run(controller, project, request):
     for index, item in enumerate(selected["rows"]):
         if controller.cancelled.is_set():
             break
+        context = None
         try:
             snapshot = capture(controller.store, project, item)
+            entry = snapshot["data"]["entry"]
+            context = entry.get("context_summary") or {
+                "before": len(entry["context_before"]),
+                "after": len(entry["context_after"]),
+                "line_kind": snapshot["data"]["line_kind"],
+            }
             controller._set(
                 resolution_label=f"Разбор ошибки {index+1}/{result['total']} · строка #{item['record']}",
                 message=f"Разбор ошибки {index+1}/{result['total']} · строка #{item['record']}",
@@ -516,6 +543,7 @@ def run(controller, project, request):
                         "record": item["record"],
                         "action": "attention",
                         "reason": proposal["reason"],
+                        "context": context,
                     }
                 )
                 publish()
@@ -571,6 +599,7 @@ def run(controller, project, request):
                     "reason": proposal["reason"],
                     "before": snapshot["row"]["text"],
                     "after": proposal["text"],
+                    "context": context,
                 }
             )
         except (ValueError, TypeError, KeyError, OSError) as error:
@@ -581,6 +610,7 @@ def run(controller, project, request):
                     "record": item["record"],
                     "action": "attention",
                     "reason": str(error)[:4000],
+                    "context": context,
                 }
             )
         publish()
