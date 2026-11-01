@@ -19,6 +19,7 @@ def resolve(snapshot, request, cancelled, progress):
     attempts, seen = [], set()
     calls = 0
     checked_original = False
+    original_confirmations = []
     last_reason = "Решение не подтверждено"
 
     def ask(proposal=None, feedback=None, phase="proposal"):
@@ -44,7 +45,7 @@ def resolve(snapshot, request, cancelled, progress):
             response = request(prompt(snapshot, proposal, feedback=feedback))
             if cancelled.is_set():
                 raise Unresolved("Разбор остановлен", attempts, calls)
-            return parse(response, snapshot, verification=proposal is not None)
+            return parse(response, snapshot, verification=proposal or False)
         except Unresolved:
             raise
         except (ValueError, TypeError, KeyError, OSError) as error:
@@ -86,6 +87,42 @@ def resolve(snapshot, request, cancelled, progress):
             )
             return proposal, verification, attempts, calls
         last_reason = "Проверка решения: " + verification["reason"]
+        if verification["verdict"] == "keep" and proposal["action"] == "fix":
+            original_confirmations.append(verification)
+            if len(original_confirmations) >= 2 and snapshot["row"]["text"]:
+                try:
+                    keep = parse(
+                        json.dumps(
+                            {
+                                "record": snapshot["row"]["id"],
+                                "revision": snapshot["row"]["revision"],
+                                "action": "keep",
+                                "text": snapshot["row"]["text"],
+                                "reason": "Две отдельные проверки подтвердили текущий перевод. "
+                                + verification["reason"],
+                                "evidence": verification["evidence"],
+                            }
+                        ),
+                        snapshot,
+                    )
+                except ValueError as error:
+                    raise Unresolved(str(error), attempts, calls) from None
+                confirmed = {
+                    **{
+                        key: value
+                        for key, value in verification.items()
+                        if key != "assessment"
+                    },
+                    "verdict": "confirm",
+                    "reason": keep["reason"],
+                    "confirmation_method": "two_keep_checks",
+                    "checks": original_confirmations,
+                }
+                attempt["accepted_original"] = {
+                    "proposal": keep,
+                    "verification": confirmed,
+                }
+                return keep, confirmed, attempts, calls
         if (
             verification["verdict"] == "keep"
             and proposal["action"] == "fix"

@@ -684,6 +684,101 @@ class HermesResolutionTests(unittest.TestCase):
         self.assertNotIn("proposal", calls[4])
         self.assertEqual(self.controller.status["repair_progress"]["fix"], 1)
 
+    def test_two_fresh_keep_verdicts_can_resolve_an_earlier_disagreement(self):
+        snap = self.snapshot(2)
+        replies = iter(
+            [
+                self.proposal(snap, "fix", "Переезд произошёл неожиданно."),
+                self.verifier(snap, "keep"),
+                self.verifier(snap, "reject"),
+                self.proposal(snap, "fix", "По работе его перевели неожиданно."),
+                self.verifier(snap, "keep"),
+            ]
+        )
+        resolution.run(
+            self.controller, self.project, lambda _: json.dumps(next(replies))
+        )
+        self.assertEqual(self.store.record(2)["text"], snap["row"]["text"])
+        self.assertEqual(self.controller.status["repair_progress"]["keep"], 1)
+        with self.store.db() as db:
+            reason = json.loads(
+                db.execute(
+                    "SELECT reason FROM history WHERE record=2 ORDER BY id DESC LIMIT 1"
+                ).fetchone()[0]
+            )
+            check = reason["verification"]
+            self.assertEqual(check["confirmation_method"], "two_keep_checks")
+            self.assertEqual(len(check["checks"]), 2)
+            self.assertEqual(
+                db.execute("SELECT count(*) FROM errors WHERE resolved=0").fetchone()[
+                    0
+                ],
+                0,
+            )
+
+    def test_original_consensus_cannot_accept_broken_placeholders(self):
+        with self.store.db() as db:
+            db.execute("UPDATE records SET text='Перевод [invented]' WHERE id=2")
+        snap = self.snapshot(2)
+        replies = iter(
+            [
+                self.proposal(snap, "fix", "Переезд произошёл неожиданно."),
+                self.verifier(snap, "keep"),
+                self.proposal(snap, "fix", "По работе его перевели неожиданно."),
+                self.verifier(snap, "keep"),
+            ]
+        )
+        resolution.run(
+            self.controller, self.project, lambda _: json.dumps(next(replies))
+        )
+        self.assertEqual(self.store.record(2)["revision"], 0)
+        self.assertEqual(self.controller.status["repair_progress"]["attention"], 1)
+
+    def test_separate_assessments_distinguish_bad_rewrite_from_good_original(self):
+        snap = self.snapshot(2)
+        for candidate, original, expected in [
+            (True, False, "confirm"),
+            (False, True, "keep"),
+            (False, False, "reject"),
+            (None, None, "uncertain"),
+        ]:
+            response = {
+                **self.verifier(snap),
+                "proposal_ok": candidate,
+                "original_ok": original,
+            }
+            parsed = resolution.parse(
+                json.dumps(response),
+                snap,
+                verification=self.proposal(snap, "fix", "Новый перевод."),
+            )
+            self.assertEqual(parsed["verdict"], expected)
+            self.assertEqual(parsed["assessment"]["original_ok"], original)
+
+    def test_contradictory_assessments_of_identical_keep_text_are_rejected(self):
+        snap = self.snapshot(2)
+        for update in [
+            {"proposal_ok": False, "original_ok": True},
+            {"proposal_ok": "true", "original_ok": True},
+            {"proposal_ok": True},
+        ]:
+            with self.assertRaises(ValueError):
+                resolution.parse(
+                    json.dumps({**self.verifier(snap), **update}),
+                    snap,
+                    verification=self.proposal(snap),
+                )
+        accepted = resolution.parse(
+            json.dumps(
+                {**self.verifier(snap), "proposal_ok": None, "original_ok": True}
+            ),
+            snap,
+            verification=self.proposal(snap),
+        )
+        self.assertEqual(accepted["verdict"], "confirm")
+        resolution.commit(self.store, snap, self.proposal(snap), accepted, "fixture")
+        self.assertEqual(self.store.record(2)["revision"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -216,12 +216,11 @@ def prompt(snapshot, proposal=None, feedback=None):
         '"evidence":[{"record":ID_ИЗ_КОНТЕКСТА,"quote":"точная цитата оригинала"}]}. '
         "Для fix и keep обязательно приведи доказательство из английской текущей строки или соседей."
         if proposal is None
-        else "Независимо проверь предложенное решение по оригиналу и контексту. Не доверяй его "
-        "обоснованию и предыдущему критику. Для keep проверь, что текущий перевод уже верен, "
-        "для fix — что исправление точно и не добавляет факты. Если предложенное fix хуже или не нужно, "
-        "но текущий русский перевод уже верен, верни verdict=keep: сохраним текущий текст после отдельного подтверждения. "
-        "Для предложенного action=keep возвращай confirm, если текущий перевод верен. Формат: "
-        '{"record":ID,"revision":REV,"verdict":"confirm|keep|uncertain|reject","reason":"обоснование",'
+        else "Независимо оцени ДВА текста по оригиналу и контексту: proposal.text и исходный entry.russian. "
+        "Для каждого отдельно укажи true, если перевод точен и естественен, false при конкретной ошибке, null при недостатке фактов. "
+        "Отклонение новой правки само по себе не означает, что исходный перевод неверен. "
+        "Не доверяй обоснованию генератора и старым критикам. Формат: "
+        '{"record":ID,"revision":REV,"proposal_ok":true,"original_ok":false,"reason":"обоснование обеих оценок",'
         '"evidence":[{"record":ID_ИЗ_КОНТЕКСТА,"quote":"точная цитата оригинала"}]}.'
     )
     data = {**snapshot["data"]}
@@ -232,7 +231,10 @@ def prompt(snapshot, proposal=None, feedback=None):
             "instruction": instruction,
         }
         if proposal is None:
-            task += " Это доработка после разногласий: найди новый точный вариант с учётом всех замечаний в repair_feedback, а не повтор прежнего решения."
+            task += (
+                " Это доработка после разногласий: найди новый точный вариант с учётом всех замечаний в repair_feedback, а не повтор прежнего решения. "
+                + instruction
+            )
     if proposal is not None:
         # Check the wording against source evidence, without anchoring on an old
         # critic's verdict or the rewriting stage's instructions/rationale.
@@ -265,6 +267,43 @@ def parse(text, snapshot, verification=False):
         for k in ("record", "revision")
     ):
         raise ValueError("Hermes ответил для другой строки или версии")
+    if verification and ("proposal_ok" in value or "original_ok" in value):
+        if not all(
+            key in value and (value[key] is None or type(value[key]) is bool)
+            for key in ("proposal_ok", "original_ok")
+        ):
+            raise ValueError(
+                "Проверяющий должен отдельно оценить оба перевода: true, false или null"
+            )
+        proposed, original = value.pop("proposal_ok"), value.pop("original_ok")
+        same = isinstance(verification, dict) and verification.get("action") == "keep"
+        if (
+            same
+            and type(proposed) is bool
+            and type(original) is bool
+            and proposed != original
+        ):
+            raise ValueError(
+                "Проверяющий дал противоречивые оценки одному и тому же тексту"
+            )
+        if same:
+            verdict = (
+                "confirm"
+                if proposed is True or original is True
+                else "reject" if proposed is False or original is False else "uncertain"
+            )
+        else:
+            verdict = (
+                "confirm"
+                if proposed is True
+                else (
+                    "keep"
+                    if original is True
+                    else "reject" if proposed is False else "uncertain"
+                )
+            )
+        value["assessment"] = {"proposal_ok": proposed, "original_ok": original}
+        value["verdict"] = verdict
     key = "verdict" if verification else "action"
     if value.get(key) not in (
         {"confirm", "keep", "uncertain", "reject"}

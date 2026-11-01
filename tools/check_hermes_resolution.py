@@ -215,11 +215,11 @@ def main():
                 flush=True,
             )
             if args.dispute:
-                assert saved["phase"] == "ready" and saved["counts"] == {
-                    "fix": 1,
-                    "keep": 0,
-                    "attention": 0,
-                }, saved
+                assert (
+                    saved["phase"] == "ready"
+                    and saved["counts"]["attention"] == 0
+                    and saved["counts"]["fix"] + saved["counts"]["keep"] == 1
+                ), saved
                 outcome = saved["outcomes"][0]
                 assert (
                     replay_count == 3
@@ -227,10 +227,17 @@ def main():
                     and outcome["calls"] <= 7
                     and len(outcome["attempts"]) >= 2
                 ), saved
-                assert (
-                    store.record(2)["text"]
-                    != "Перевод случился совершенно неожиданно в прошлом году."
-                )
+                if outcome["action"] == "keep":
+                    assert (
+                        store.record(2)["text"]
+                        == "Перевод случился совершенно неожиданно в прошлом году."
+                    )
+                    assert (
+                        outcome["attempts"][-1]["accepted_original"]["verification"][
+                            "confirmation_method"
+                        ]
+                        == "two_keep_checks"
+                    )
                 return
             assert (
                 saved["phase"] == "ready"
