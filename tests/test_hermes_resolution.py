@@ -503,10 +503,10 @@ class HermesResolutionTests(unittest.TestCase):
             ],
             rejected["reason"],
         )
-        self.assertIn("repair_feedback", calls[4])
+        self.assertNotIn("repair_feedback", calls[4])
         self.assertIn("Предложи ДРУГУЮ", calls[3]["repair_feedback"]["instruction"])
-        self.assertIn("Проверь ТОЛЬКО", calls[4]["repair_feedback"]["instruction"])
-        self.assertNotIn("Предложи ДРУГУЮ", calls[4]["repair_feedback"]["instruction"])
+        self.assertNotIn("previous_errors", calls[4])
+        self.assertNotIn("reason", calls[4]["proposal"])
         self.assertEqual(self.store.record(2)["text"], rewrite["text"])
         with self.store.db() as db:
             reason = json.loads(
