@@ -58,17 +58,39 @@ $("provider").hidden = true;
 const providerLabel = $("provider").previousElementSibling;
 if (providerLabel?.tagName === "LABEL") providerLabel.hidden = true;
 let knownConnections = [],
+  apiConnections = [],
   executionVersion = "";
+function apiConnectionName(identity, project = studioState.project) {
+  return (
+    apiConnections.find((item) => item.id === (identity || "legacy:" + project))
+      ?.name ||
+    (identity && !identity.startsWith("legacy:")
+      ? "Подключение недоступно"
+      : "Ключ проекта")
+  );
+}
+studioLifecycle.register("cloudCatalog", "executionCatalog", (items) => {
+  apiConnections = items;
+  updateExecutionChoices();
+  updateTaskActions();
+});
 function updateExecutionChoices() {
+  const eligible = apiConnections.filter(
+    (item) => !item.projects || item.projects.includes(studioState.project),
+  );
+  const identity = $("cloud_connection")?.value;
   const selected =
     $("provider").value === "mcp"
       ? "mcp:" + mcpSessionInput.value
       : $("provider").value === "cloud"
-        ? "cloud"
+        ? eligible.some((item) => item.id === identity)
+          ? "api:" + identity
+          : "cloud"
         : "local:" + $("model").value;
   const local = [...$("model").options].map((o) => [o.value, o.textContent]);
   const signature = JSON.stringify([
     local,
+    eligible.map((item) => [item.id, item.name]),
     knownConnections.map((c) => [c.session, c.client, c.model, c.sampling]),
     $("cloud_model").value,
     cloudEnabled.checked,
@@ -83,7 +105,16 @@ function updateExecutionChoices() {
       localGroup.append(option);
     }
     const external = element("optgroup");
-    external.label = "Облачный API и MCP";
+    external.label = "API-ключи";
+    for (const item of eligible) {
+      const name =
+        item.id === identity && $("cloud_model").value
+          ? item.name + " · " + $("cloud_model").value
+          : item.name;
+      const option = element("option", name);
+      option.value = "api:" + item.id;
+      external.append(option);
+    }
     const api = element(
       "option",
       $("cloud_model").value
@@ -91,7 +122,10 @@ function updateExecutionChoices() {
         : "Подключить облачную модель через API…",
     );
     api.value = "cloud";
-    if (cloudEnabled.checked) external.append(api);
+    if (cloudEnabled.checked && (!eligible.length || selected === "cloud"))
+      external.append(api);
+    const mcp = element("optgroup");
+    mcp.label = "MCP";
     for (const c of knownConnections) {
       const option = element(
         "option",
@@ -99,7 +133,7 @@ function updateExecutionChoices() {
       );
       option.value = "mcp:" + c.session;
       option.disabled = !c.sampling;
-      external.append(option);
+      mcp.append(option);
     }
     if (
       selected.startsWith("mcp:") &&
@@ -108,9 +142,9 @@ function updateExecutionChoices() {
       const option = element("option", "MCP отключён — подключите клиент");
       option.value = selected;
       option.disabled = true;
-      external.append(option);
+      mcp.append(option);
     }
-    executionModel.replaceChildren(localGroup, external);
+    executionModel.replaceChildren(localGroup, external, mcp);
     executionModel.value = selected;
     executionVersion = signature;
   }
@@ -122,10 +156,16 @@ function updateExecutionChoices() {
   modelHint.hidden = $("provider").value !== "mcp";
   modelSort.hidden = modelSortLabel.hidden = $("provider").value !== "local";
   modelInfo.hidden = $("provider").value !== "local";
+  if ($("executorModelFields"))
+    $("executorModelFields").hidden = $("provider").value !== "cloud";
 }
 executionModel.onchange = () => {
   const value = executionModel.value;
-  if (value === "cloud") {
+  if (value.startsWith("api:")) {
+    cloudEnabled.checked = true;
+    $("provider").value = "cloud";
+    studioLifecycle.notify("selectCloudConnection", value.slice(4));
+  } else if (value === "cloud") {
     if (!cloudEnabled.checked) {
       updateExecutionChoices();
       return;
@@ -134,7 +174,7 @@ executionModel.onchange = () => {
     if (!$("cloud_model").value) {
       studioLifecycle.notify("openProjectSettings", { tab: "integrations" });
       cloudConnection.open = true;
-      $("endpoint").focus();
+      $("cloudConnectionPicker")?.focus();
     }
   } else if (value.startsWith("mcp:")) {
     $("provider").value = "mcp";
@@ -500,7 +540,8 @@ sidebarStyle.textContent = `
 #taskCard .task-heading strong{font-size:14px}
 #taskCard #progress{display:block;width:100%;margin:14px 0 9px}
 #taskCard #progressText{font-variant-numeric:tabular-nums}
-#taskCard #activeSettings{margin:8px 0 14px;overflow-wrap:anywhere}
+#taskCard .ux-executor-summary{display:flex;align-items:baseline;gap:8px;margin:7px 0 12px}
+#taskCard #activeSettings{margin:0;min-width:0;overflow-wrap:anywhere}
 #taskCard #live{margin:0 0 16px;background:#111b20;max-height:240px;overflow:auto}
 #taskCard #mainAction{margin:0;width:100%}
 #taskCard #actionHint{margin:8px 0 14px}

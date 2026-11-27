@@ -472,12 +472,17 @@ function updateTaskActions() {
             ? "В проекте нет строк без перевода."
             : "Создаст новую задачу для строк без перевода.",
   );
+  const savedJob = active ? JSON.parse(studioState.job.settings || "{}") : {};
   const currentSettings = active
-    ? JSON.parse(studioState.job.settings || "{}")
+    ? studioState.job.state === "paused" && !savedJob._retry_origin
+      ? { ...savedJob, ...resumeExecutionSettings(studioState.job) }
+      : savedJob
     : Object.fromEntries(
         [
           "model",
           "cloud_model",
+          "cloud_connection",
+          "mcp_model_hint",
           "source_language",
           "target_language",
           "context_before",
@@ -503,10 +508,13 @@ function updateTaskActions() {
     " до / " +
     (currentSettings.context_after ?? (active ? 4 : 8)) +
     " после";
-  setText(
-    activeSettings,
-    `${provider === "cloud" ? "Облако" : provider === "mcp" ? "MCP" : "Локально"} · ${model || "модель не выбрана"}`,
-  );
+  const executor =
+    provider === "cloud"
+      ? "API-ключ «" + apiConnectionName(currentSettings.cloud_connection) + "»"
+      : provider === "mcp"
+        ? "MCP"
+        : "Локально";
+  setText(activeSettings, `${executor} · ${model || "модель не выбрана"}`);
   $("cancel").hidden = !active;
   $("retry").disabled = active || !(studioState.snapshot?.errors || 0);
   const review = right.querySelector('[data-stage="review"]');

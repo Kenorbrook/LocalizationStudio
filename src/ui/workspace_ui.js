@@ -353,7 +353,9 @@ const workspaceUi = (() => {
     () => activeSettings.dataset.fullDescription || activeSettings.textContent,
     "Параметры текущей задачи",
   );
-  activeSettings.after(modelDetails);
+  const executorSummary = element("div", undefined, "ux-executor-summary");
+  primaryRow.after(executorSummary);
+  executorSummary.append(activeSettings, modelDetails);
   reviewHint.hidden = true;
   reviewMenu
     .querySelector("summary")

@@ -650,6 +650,21 @@ for (let b of document.querySelectorAll("[data-close]"))
 for (let b of document.querySelectorAll("[data-stage]"))
   b.onclick = guard(() => start(b.dataset.stage));
 $("retry").onclick = guard(() => start(studioState.lastStage, true));
+function resumeExecutionSettings(job) {
+  const options = settings();
+  if (job.provider !== options.provider) {
+    for (const key of [
+      "cloud_connection",
+      "cloud_model",
+      "endpoint",
+      "model",
+      "mcp_session",
+      "mcp_model_hint",
+    ])
+      delete options[key];
+  }
+  return options;
+}
 for (let mode of ["pause", "resume", "cancel"])
   $(mode).onclick = guard(async () => {
     if (
@@ -660,10 +675,18 @@ for (let mode of ["pause", "resume", "cancel"])
       throw Error(
         "Это облачная очередь. Включите облачные модели в дополнительных настройках или отмените её и создайте локальную задачу",
       );
+    const options =
+      mode === "resume" ? resumeExecutionSettings(studioState.job) : undefined;
+    if (
+      options?.provider === "cloud" &&
+      studioState.job.provider === "cloud" &&
+      !options.cloud_model
+    )
+      throw Error("Выберите модель API в настройках проекта");
     await request("control", {
       id: studioState.job.id,
       mode,
-      settings: mode === "resume" ? settings() : undefined,
+      settings: options,
       limits: mode === "resume" ? readRunLimits() : undefined,
       neighbors: mode === "resume" ? readNeighborContext() : undefined,
       auto_foreign: mode === "resume" ? $("auto_foreign").checked : undefined,

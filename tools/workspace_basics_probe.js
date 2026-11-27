@@ -29,6 +29,12 @@ void (async () => {
       $("activeSettings").textContent.includes("fixture-model"),
       "running model label",
     );
+    check(
+      $("mainAction")
+        .closest(".ux-primary-action")
+        .nextElementSibling.contains($("activeSettings")),
+      "executor summary is directly below the primary action",
+    );
     check($("setupCard").hidden, "secondary controls hidden for a paused job");
 
     const native = window.pywebview.api;
@@ -76,6 +82,27 @@ void (async () => {
       "scoped key metadata",
     );
     $("projectSettingsButton").click();
+    const executor = $("executionModel");
+    check(
+      [...executor.options].some(
+        (option) => option.value === "api:fixture-global",
+      ),
+      "global API key is visible in the executor chooser",
+    );
+    check(
+      ![...executor.options].some(
+        (option) => option.value === "api:fixture-scoped",
+      ),
+      "executor chooser excludes keys scoped to another project",
+    );
+    executor.value = "api:fixture-global";
+    executor.onchange();
+    check(
+      $("cloud_enabled").checked &&
+        $("settingsPanel-translation").contains($("cloudModelOptions")) &&
+        !$("executorModelFields").hidden,
+      "choosing the key enables API and shows models on the translation tab",
+    );
     $("settingsTab-integrations").click();
     $("cloud_enabled").checked = true;
     $("cloud_enabled").dispatchEvent(new Event("change", { bubbles: true }));
@@ -90,6 +117,7 @@ void (async () => {
     );
     picker.value = "fixture-global";
     await picker.onchange();
+    $("settingsTab-translation").click();
     check(!$("cloudModelOptions").hidden, "discovered models are selectable");
     $("cloudModelOptions").value = "second-model";
     $("cloudModelOptions").onchange();
@@ -98,6 +126,32 @@ void (async () => {
         settings().cloud_model === "second-model",
       "job selects key and model independently",
     );
+    await $("saveSettings").onclick();
+    check(
+      $("activeSettings").textContent ===
+        "API-ключ «fixture-global» · second-model",
+      "paused job shows the key name and model chosen for continuation",
+    );
+    const originalRequest = request;
+    let control;
+    request = (path, body) => {
+      if (path === "control") {
+        control = body;
+        return Promise.resolve({ ok: true });
+      }
+      return originalRequest(path, body);
+    };
+    try {
+      await $("mainAction").onclick();
+      check(
+        control?.mode === "resume" &&
+          control.settings.cloud_connection === "fixture-global" &&
+          control.settings.cloud_model === "second-model",
+        "resume sends the same connection and model as the label",
+      );
+    } finally {
+      request = originalRequest;
+    }
     window.__featureProbe = { passed: true, checks };
   } catch (error) {
     window.__featureProbe = {

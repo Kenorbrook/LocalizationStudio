@@ -36,9 +36,14 @@
       openCloudSettings,
       connectionIdentity,
     );
-  cloudModel.before(modelList);
-  cloudModel.after(refreshModels, modelStatus);
-  modelList.previousElementSibling.textContent = "Модель";
+  const modelFields = element("div", undefined, "ux-field");
+  modelFields.id = "executorModelFields";
+  const modelLabel = element("label", "Модель API");
+  modelLabel.htmlFor = modelList.id;
+  cloudModel.previousElementSibling.hidden = true;
+  modelFields.append(modelLabel, modelList, cloudModel);
+  executionModel.closest(".ux-field").after(modelFields);
+  connectionPicker.after(refreshModels, modelStatus);
 
   const connectionEditor = element("form", undefined, "cloud-editor");
   connectionEditor.hidden = true;
@@ -196,6 +201,7 @@
   function renderModelOptions() {
     const item = catalogItem();
     const models = item?.models || [];
+    const manual = modelList.value === customModel;
     modelList.replaceChildren();
     for (const [value, label] of [
       ["", "Выберите модель"],
@@ -208,7 +214,7 @@
     }
     modelList.hidden = !models.length;
     modelList.value =
-      !cloudModel.value || models.includes(cloudModel.value)
+      (!cloudModel.value && !manual) || models.includes(cloudModel.value)
         ? cloudModel.value
         : customModel;
     cloudModel.hidden = !!models.length && modelList.value !== customModel;
@@ -264,6 +270,7 @@
     }
     renderCloudCatalog();
     renderProjectCloud();
+    studioLifecycle.notify("cloudCatalog", cloudCatalog);
   }
   connectionEditor.onsubmit = guard(async (event) => {
     event.preventDefault();
@@ -296,16 +303,26 @@
   });
   appSettings.addEventListener("click", guard(loadCloudCatalog));
   updatesDialog.addEventListener("close", () => cancelConnection.onclick());
-  connectionPicker.onchange = guard(async () => {
-    connectionIdentity.value = connectionPicker.value;
+  const selectConnection = guard(async (identity) => {
+    if (connectionIdentity.value === identity) return;
+    connectionIdentity.value = identity;
+    modelList.value = "";
     const item = catalogItem();
     $("endpoint").value = item?.endpoint || "";
     cloudModel.value = item?.models.length === 1 ? item.models[0] : "";
-    renderModelOptions();
+    renderProjectCloud();
     updateExecutionChoices();
     updateTaskActions();
+    if (item && !cloudModel.value && !$("executorModelFields").hidden)
+      (modelList.hidden ? cloudModel : modelList).focus();
     if (item && !item.models.length) await fetchCloudModels(item);
   });
+  connectionPicker.onchange = () => selectConnection(connectionPicker.value);
+  studioLifecycle.register(
+    "selectCloudConnection",
+    "cloudExecutor",
+    selectConnection,
+  );
   refreshModels.onclick = guard(async () => {
     refreshModels.disabled = true;
     try {
