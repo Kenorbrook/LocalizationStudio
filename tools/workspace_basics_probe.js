@@ -204,6 +204,11 @@ void (async () => {
       "edit opens the selected key form above the catalog",
     );
     nameField.value = "Renamed key";
+    const retrySetting = [...editorDialog.querySelectorAll("label")].find(
+      (label) => label.textContent.includes("Автовозобновление"),
+    ).firstElementChild;
+    check(retrySetting.checked, "API auto-resume is enabled for existing keys");
+    retrySetting.checked = false;
     await editorDialog
       .querySelector("form")
       .onsubmit(new Event("submit", { cancelable: true }));
@@ -212,6 +217,12 @@ void (async () => {
         catalogDialog.open &&
         catalogDialog.textContent.includes("Renamed key"),
       "edited key returns to refreshed catalog",
+    );
+    check(
+      (await native.cloud_connections()).find(
+        (item) => item.id === "fixture-scoped",
+      ).retry_unavailable === false,
+      "API auto-resume can be disabled for one key",
     );
     catalogDialog.close();
     check(
@@ -254,6 +265,34 @@ void (async () => {
     $("infoDialog").close();
     displayUpdateState(previousUpdateState);
     settingsPanel.close();
+    request = async (path, body) => {
+      const response = await originalRequest(path, body);
+      if (!path.startsWith("state?")) return response;
+      const retryAt = Date.now() / 1000 + 30;
+      Object.assign(response.jobs[0], {
+        state: "running",
+        worker_active: 1,
+        retry_at: retryAt,
+        error: "Провайдер временно недоступен: HTTP 504",
+      });
+      Object.assign(response.activity[0], {
+        state: "running",
+        retry_at: retryAt,
+      });
+      return response;
+    };
+    try {
+      await refresh(true);
+      check(
+        $("jobState").textContent === "Ожидание API" &&
+          $("activeProjectJob").textContent.includes("Ожидание API") &&
+          $("progressError").textContent.includes("повтор через") &&
+          !$("mainAction").disabled,
+        "API wait shows retry countdown and leaves pause available",
+      );
+    } finally {
+      request = originalRequest;
+    }
     window.__featureProbe = { passed: true, checks };
   } catch (error) {
     window.__featureProbe = {

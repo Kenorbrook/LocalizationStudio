@@ -114,7 +114,7 @@ def state(store, project, editing=False):
         activity = [
             dict(r)
             for r in db.execute(
-                """SELECT j.id,j.project,p.name,j.stage,j.state,j.provider,j.done,j.total,
+                """SELECT j.id,j.project,p.name,j.stage,j.state,j.provider,j.done,j.total,j.retry_at,
                    CASE j.provider WHEN 'cloud' THEN json_extract(j.settings,'$.cloud_model')
                    WHEN 'mcp' THEN json_extract(j.settings,'$.mcp_model_hint')
                    ELSE json_extract(j.settings,'$.model') END model

@@ -201,7 +201,7 @@ def control(store, data):
             )
         elif mode in {"pause", "cancel"}:
             db.execute(
-                "UPDATE jobs SET state=? WHERE id=?",
+                "UPDATE jobs SET state=?,error=CASE WHEN retry_at>0 THEN '' ELSE error END,retry_at=0 WHERE id=?",
                 ("paused" if mode == "pause" else "cancelled", jid),
             )
         else:

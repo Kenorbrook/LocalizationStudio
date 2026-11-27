@@ -1,6 +1,6 @@
 import json, os, threading, time
 from core import Store, now, dump
-from providers import Provider, ServiceUnavailable, process_record
+from providers import CloudTemporaryError, Provider, ServiceUnavailable, process_record
 from speaker_context import context_entry
 from long_text import JobStopped
 from script_validation import ScriptRepairFailed
@@ -25,7 +25,7 @@ def run(store, jid, provider_factory=Provider):
             ).fetchone()
         )
         claimed = db.execute(
-            "UPDATE jobs SET state='running',worker_active=1,pid=?,heartbeat=?,run_started=?,run_done=0,run_elapsed=0,error='' WHERE id=? AND state='queued'",
+            "UPDATE jobs SET state='running',worker_active=1,pid=?,heartbeat=?,run_started=?,run_done=0,run_elapsed=0,error='',retry_at=0 WHERE id=? AND state='queued'",
             (os.getpid(), time.time(), time.time(), jid),
         )
         if not claimed.rowcount:
@@ -56,6 +56,16 @@ def run(store, jid, provider_factory=Provider):
         log.write(now() + " " + s + "\n")
         log.flush()
 
+    def create_provider(project, kind, options):
+        provider = provider_factory(project, kind, options)
+        if kind == "cloud":
+            from cloud_retry import wait_before_retry
+
+            provider.cloud_retry = lambda error, attempt, current: wait_before_retry(
+                store, jid, current, error, attempt, started, emit
+            )
+        return provider
+
     emit(f'JOB {jid} — {job["stage"]} — {project["name"]}')
 
     def complete_record(rid, outcome):
@@ -80,7 +90,7 @@ def run(store, jid, provider_factory=Provider):
         if job["stage"] == "analyze":
             from knowledge_analysis import run_analysis
 
-            run_analysis(store, job, project, settings, provider_factory, emit)
+            run_analysis(store, job, project, settings, create_provider, emit)
             return
         provider = None
         effective_settings = None
@@ -183,7 +193,7 @@ def run(store, jid, provider_factory=Provider):
                     )
                 if record_settings != effective_settings:
                     calls = getattr(provider, "calls", 0)
-                    provider = provider_factory(
+                    provider = create_provider(
                         project, job["provider"], record_settings
                     )
                     provider.calls = calls
@@ -265,7 +275,8 @@ def run(store, jid, provider_factory=Provider):
                         ):
                             emit("INCOMPLETE: остановлено")
                             return
-                    store.error(jid, rid, str(e))
+                    if not isinstance(e, CloudTemporaryError):
+                        store.error(jid, rid, str(e))
                     with store.db() as db:
                         db.execute(
                             "UPDATE jobs SET state='paused',error=? WHERE id=? AND state='running'",

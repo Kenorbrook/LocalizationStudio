@@ -42,6 +42,12 @@ def initialize(db):
     """)
     if "candidate" not in {r[1] for r in db.execute("PRAGMA table_info(errors)")}:
         db.execute("ALTER TABLE errors ADD COLUMN candidate TEXT DEFAULT ''")
+    if "retry_unavailable" not in {
+        r[1] for r in db.execute("PRAGMA table_info(cloud_connections)")
+    }:
+        db.execute(
+            "ALTER TABLE cloud_connections ADD COLUMN retry_unavailable INTEGER NOT NULL DEFAULT 1"
+        )
     if "origin" not in {r[1] for r in db.execute("PRAGMA table_info(record_marks)")}:
         db.execute("ALTER TABLE record_marks ADD COLUMN origin TEXT DEFAULT 'unknown'")
     for column in ["completed", "keep_visible", "deleting"]:
@@ -87,6 +93,7 @@ def initialize(db):
         ("run_elapsed", "REAL DEFAULT 0"),
         ("run_done", "INTEGER DEFAULT 0"),
         ("worker_launch", "TEXT DEFAULT ''"),
+        ("retry_at", "REAL NOT NULL DEFAULT 0"),
     ]:
         if name not in job_columns:
             db.execute(f"ALTER TABLE jobs ADD COLUMN {name} {definition}")

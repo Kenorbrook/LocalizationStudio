@@ -69,7 +69,7 @@ def recover_workers(store):
             message = "Обработчик завершился; очередь сохранена. Нажмите «Продолжить»."
         with store.db() as db:
             updated = db.execute(
-                "UPDATE jobs SET state=?,worker_active=0,error=? WHERE id=? AND state=? AND pid IS ? AND heartbeat=? AND worker_active=?",
+                "UPDATE jobs SET state=?,worker_active=0,error=?,retry_at=0 WHERE id=? AND state=? AND pid IS ? AND heartbeat=? AND worker_active=?",
                 (
                     target,
                     message,
@@ -118,7 +118,7 @@ def watch_worker(store, jid, process, launch_token=None):
         if job["state"] in {"queued", "running"}:
             message = f"Обработчик завершился неожиданно (код {code}); очередь сохранена. Нажмите «Продолжить»."
         db.execute(
-            f"UPDATE jobs SET state=?,worker_active=0,error=? WHERE id=? AND {owner_column}=?",
+            f"UPDATE jobs SET state=?,worker_active=0,error=?,retry_at=0 WHERE id=? AND {owner_column}=?",
             (target, message, jid, owner),
         )
         db.execute(

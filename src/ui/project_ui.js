@@ -96,10 +96,13 @@ function updateProjectScreen() {
     (p) => p.id == studioState.project,
   );
   const active = !!p?.active;
+  const waitingForApi =
+    studioState.job?.state === "running" && !!studioState.job.retry_at;
   const av = JSON.stringify([
     studioState.project,
     active,
     studioState.job?.state,
+    waitingForApi,
   ]);
   if (av !== activityVersion) {
     activity.replaceChildren();
@@ -107,11 +110,13 @@ function updateProjectScreen() {
     activity.append(
       element(
         "span",
-        active
-          ? "Перевод или проверка выполняется"
-          : ["paused", "held"].includes(studioState.job?.state)
-            ? "Задача на паузе"
-            : "Нет работающих задач",
+        waitingForApi
+          ? "Ожидание API"
+          : active
+            ? "Перевод или проверка выполняется"
+            : ["paused", "held"].includes(studioState.job?.state)
+              ? "Задача на паузе"
+              : "Нет работающих задач",
       ),
     );
     activityVersion = av;

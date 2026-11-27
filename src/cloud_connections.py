@@ -63,6 +63,7 @@ def listing(store):
     for connection in connections:
         connection["projects"] = json.loads(connection["projects"])
         connection["models"] = json.loads(connection["models"])
+        connection["retry_unavailable"] = bool(connection["retry_unavailable"])
     for project in projects:
         settings = json.loads(project["settings"])
         endpoint = settings.get("_legacy_cloud_endpoint")
@@ -79,6 +80,7 @@ def listing(store):
                         [settings["cloud_model"]] if settings.get("cloud_model") else []
                     ),
                     "legacy": True,
+                    "retry_unavailable": True,
                 }
             )
     return connections
@@ -91,6 +93,9 @@ def save(store, values):
     name = str(values.get("name", "")).strip()
     key = str(values.get("key", "")).strip()
     projects = values.get("projects")
+    retry_unavailable = values.get("retry_unavailable", True)
+    if type(retry_unavailable) is not bool:
+        raise ValueError("Некорректное значение автовозобновления")
     if not name or len(name) > 100 or len(key.encode()) > 2500:
         raise ValueError("Проверьте название и длину ключа")
     if projects is not None and (
@@ -101,23 +106,36 @@ def save(store, values):
         raise ValueError("Выберите проекты или разрешите подключение всем")
     with store.db() as db:
         old = db.execute(
-            "SELECT endpoint FROM cloud_connections WHERE id=?", (identity,)
+            "SELECT endpoint,retry_unavailable FROM cloud_connections WHERE id=?",
+            (identity,),
         ).fetchone()
         endpoint = base_url(values.get("endpoint", ""))
         if old:
             if endpoint != old["endpoint"] or key:
                 raise ValueError("Для другого адреса или ключа добавьте подключение")
             db.execute(
-                "UPDATE cloud_connections SET name=?,projects=? WHERE id=?",
-                (name, json.dumps(projects), identity),
+                "UPDATE cloud_connections SET name=?,projects=?,retry_unavailable=? WHERE id=?",
+                (
+                    name,
+                    json.dumps(projects),
+                    int(values.get("retry_unavailable", old["retry_unavailable"])),
+                    identity,
+                ),
             )
         else:
             if values.get("id") or not key:
                 raise ValueError("Укажите API-ключ нового подключения")
             secret("cloud/" + identity, key)
             db.execute(
-                "INSERT INTO cloud_connections(id,name,endpoint,projects,models) VALUES (?,?,?,?,?)",
-                (identity, name, endpoint, json.dumps(projects), "[]"),
+                "INSERT INTO cloud_connections(id,name,endpoint,projects,models,retry_unavailable) VALUES (?,?,?,?,?,?)",
+                (
+                    identity,
+                    name,
+                    endpoint,
+                    json.dumps(projects),
+                    "[]",
+                    int(retry_unavailable),
+                ),
             )
     return identity
 

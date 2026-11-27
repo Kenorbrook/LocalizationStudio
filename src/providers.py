@@ -1,6 +1,6 @@
 """Local direct Ollama and optional HTTPS Chat Completions compatible providers."""
 
-import ctypes, json, os, subprocess, time, urllib.request, urllib.error
+import ctypes, json, os, ssl, subprocess, time, urllib.request, urllib.error
 import re
 from ctypes import wintypes
 from urllib.parse import urlparse
@@ -22,6 +22,12 @@ LOCAL_CHAT_TIMEOUT = 600
 
 class ServiceUnavailable(Exception):
     pass
+
+
+class CloudTemporaryError(ServiceUnavailable):
+    def __init__(self, message, retry_after=None):
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 class LocalInferenceError(RuntimeError):
@@ -155,8 +161,49 @@ def json_request(url, data=None, headers=None, local=False):
             finally:
                 e.close()
             raise local_inference_error(details, e.code) from None
+        if not local and e.code in {
+            408,
+            429,
+            500,
+            502,
+            503,
+            504,
+            520,
+            521,
+            522,
+            523,
+            524,
+        }:
+            retry_after = e.headers.get("Retry-After") if e.headers else None
+            if e.code == 429:
+                try:
+                    detail = json.loads(e.read(8192)).get("error", {})
+                    if any(
+                        detail.get(field)
+                        in (
+                            "insufficient_quota",
+                            "insufficient_balance",
+                            "billing_hard_limit_reached",
+                        )
+                        for field in ("code", "type")
+                    ):
+                        raise ServiceUnavailable(
+                            "Квота API исчерпана (HTTP 429)"
+                        ) from None
+                except (ValueError, AttributeError, OSError):
+                    pass
+                finally:
+                    e.close()
+            else:
+                e.close()
+            message = (
+                "Лимит запросов или перегрузка модели (HTTP 429)"
+                if e.code == 429
+                else f"Провайдер временно недоступен: HTTP {e.code}"
+            )
+            raise CloudTemporaryError(message, retry_after) from None
         e.close()
-        if e.code in {429, 500, 502, 503, 504}:
+        if local and e.code in {429, 500, 502, 503, 504}:
             raise ServiceUnavailable(
                 f"Провайдер временно недоступен: HTTP {e.code}"
             ) from None
@@ -187,6 +234,14 @@ def json_request(url, data=None, headers=None, local=False):
             raise ServiceUnavailable(
                 "Ollama недоступна на 127.0.0.1:11434: не отвечает проверка сервиса. Очередь сохранена на паузе; после восстановления связи нажмите «Продолжить»."
             ) from None
+        if not local:
+            if isinstance(
+                getattr(e, "reason", e), (ssl.SSLCertVerificationError, PermissionError)
+            ):
+                raise ServiceUnavailable(
+                    "Не удалось установить защищённое соединение с API"
+                ) from None
+            raise CloudTemporaryError("Нет связи с API") from None
         raise ServiceUnavailable(
             "Нет связи с моделью. Прогресс сохранён; можно продолжить"
         ) from None
@@ -212,6 +267,7 @@ class Provider:
         self.kind = kind
         self.settings = settings
         self.calls = 0
+        self.cloud_retry = None
         self.profile = json.loads(
             (SHARED / "local_literary_profile.json").read_text(encoding="utf-8-sig")
         )
@@ -347,25 +403,11 @@ class Provider:
             except RuntimeError as e:
                 raise ServiceUnavailable(str(e)) from None
         else:
+            from cloud_connections import job_key
+
             endpoint = self.settings.get("endpoint", "").rstrip("/")
             if urlparse(endpoint).scheme != "https":
                 raise ValueError("Облачный API должен использовать HTTPS")
-            key = (
-                secret(self.project["id"])
-                if not self.settings.get("cloud_connection")
-                else ""
-            )
-            if self.settings.get("cloud_connection"):
-                from cloud_connections import job_key
-
-                try:
-                    key = job_key(
-                        self.settings["_studio_db"], self.project["id"], self.settings
-                    )
-                except ValueError as error:
-                    raise ServiceUnavailable(str(error)) from None
-            if not key:
-                raise ServiceUnavailable("Не задан API-ключ")
             body = {
                 "model": self.settings.get("cloud_model", ""),
                 "messages": messages,
@@ -378,11 +420,34 @@ class Provider:
                     "include_venice_system_prompt": False,
                     "enable_web_search": "off",
                 }
-            result = json_request(
-                endpoint + "/chat/completions",
-                body,
-                headers={"Authorization": "Bearer " + key},
-            )
+            attempt = 0
+            while True:
+                try:
+                    key = job_key(
+                        self.settings.get("_studio_db"),
+                        self.project["id"],
+                        self.settings,
+                    )
+                except ValueError as error:
+                    raise ServiceUnavailable(str(error)) from None
+                if not key:
+                    raise ServiceUnavailable("Не задан API-ключ")
+                try:
+                    result = json_request(
+                        endpoint + "/chat/completions",
+                        body,
+                        headers={"Authorization": "Bearer " + key},
+                    )
+                    break
+                except CloudTemporaryError as error:
+                    if (
+                        self.cloud_retry is None
+                        or self.calls >= limit
+                        or not self.cloud_retry(error, attempt, self.settings)
+                    ):
+                        raise
+                    attempt += 1
+                    self.calls += 1
             text = result["choices"][0]["message"]["content"]
             if result["choices"][0].get("finish_reason") in {
                 "length",

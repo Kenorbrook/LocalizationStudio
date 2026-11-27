@@ -102,7 +102,13 @@ function showActivity() {
   const button = $("activeProjectJob");
   button.hidden = !task;
   if (!task) return;
-  const label = `${task.name} · ${task.state === "paused" ? "Пауза" : stageTitles[task.stage] || "Задача"}`;
+  const status =
+    task.state === "paused"
+      ? "Пауза"
+      : task.state === "running" && task.retry_at
+        ? "Ожидание API"
+        : stageTitles[task.stage] || "Задача";
+  const label = `${task.name} · ${status}`;
   const count = `${task.done.toLocaleString("ru-RU")} / ${task.total.toLocaleString("ru-RU")}`;
   const title = `${label} · ${count}${task.model ? " · " + task.model : ""}`;
   if (button.title !== title) {
@@ -211,7 +217,9 @@ async function refreshState(initial = false) {
   setText(
     "jobState",
     studioState.job
-      ? jobLabels[studioState.job.state] || "Задача"
+      ? studioState.job.state === "running" && studioState.job.retry_at
+        ? "Ожидание API"
+        : jobLabels[studioState.job.state] || "Задача"
       : "Нет задачи",
   );
   setText("taskStage", stageTitles[studioState.job?.stage] || "Перевод");
@@ -233,7 +241,16 @@ async function refreshState(initial = false) {
       progress.append(element("span", job.rate.toFixed(1) + " строк/мин"));
   }
   $("progressError").hidden = !job?.error;
-  setText("progressError", job?.error || "");
+  const retryIn =
+    job?.state === "running" && job.retry_at
+      ? Math.max(0, Math.ceil(job.retry_at - Date.now() / 1000))
+      : null;
+  setText(
+    "progressError",
+    retryIn === null
+      ? job?.error || ""
+      : `${job.error} · повтор через ${retryIn} с`,
+  );
   $("pause").disabled = !studioState.job || studioState.job.state !== "running";
   $("resume").disabled = !studioState.job || studioState.job.state !== "paused";
   $("cancel").disabled =
@@ -260,6 +277,7 @@ async function refreshState(initial = false) {
           studioState.job?.fragment_total,
           studioState.job?.state,
           studioState.job?.worker_active,
+          !!studioState.job?.retry_at,
         ]
       : null,
   );
@@ -311,6 +329,8 @@ async function refreshState(initial = false) {
     await loadRows(true);
 }
 function pendingTranslationText(job) {
+  if (job?.state === "running" && job.retry_at)
+    return "Ожидаем повторного запроса…";
   if (job?.worker_active && ["paused", "cancelled"].includes(job.state))
     return "Завершаем текущий запрос…";
   return (

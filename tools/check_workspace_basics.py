@@ -34,7 +34,7 @@ def main():
                 (project, json.dumps({"cloud_model": "fixture-model"})),
             )
             db.executemany(
-                "INSERT INTO cloud_connections VALUES (?,?,?,?,?)",
+                "INSERT INTO cloud_connections(id,name,endpoint,projects,models) VALUES (?,?,?,?,?)",
                 [
                     (identity, identity, "https://example.com/v1", scope, models)
                     for identity, scope, models in [

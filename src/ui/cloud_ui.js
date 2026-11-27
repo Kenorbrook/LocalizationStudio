@@ -65,6 +65,13 @@
   connectionKey.autocomplete = "new-password";
   const allProjects = element("input");
   allProjects.type = "checkbox";
+  const retryUnavailable = element("input");
+  retryUnavailable.type = "checkbox";
+  const retryField = element("label", undefined, "update-option");
+  retryField.append(
+    retryUnavailable,
+    document.createTextNode(" Автовозобновление после сбоя API"),
+  );
   const projectScopes = element("div", undefined, "cloud-scopes");
   const keyField = element("label", "API-ключ");
   keyField.append(connectionKey);
@@ -89,6 +96,7 @@
     keyField,
     scopeField,
     projectScopes,
+    retryField,
     editorActions,
   );
   const addConnection = element("button", "Добавить API-ключ");
@@ -117,6 +125,7 @@
     connectionEndpoint.readOnly = !!item;
     connectionKey.value = "";
     keyField.hidden = !!item;
+    retryUnavailable.checked = item?.retry_unavailable !== false;
     allProjects.checked = !item?.projects;
     projectScopes.hidden = allProjects.checked;
     const available = new Map(
@@ -293,6 +302,7 @@
         name: connectionName.value,
         endpoint: connectionEndpoint.value,
         key: connectionKey.value,
+        retry_unavailable: retryUnavailable.checked,
         projects: allProjects.checked
           ? null
           : [...projectScopes.querySelectorAll("input:checked")].map((input) =>
