@@ -111,8 +111,12 @@ class CloseController:
         self.ui(restore)
 
     def reset_close_choice(self):
-        write_choice(self.path, None)
-        return {"choice": None}
+        return self.set_close_choice(None)
+
+    def set_close_choice(self, choice):
+        with self.lock:
+            write_choice(self.path, choice)
+        return {"choice": choice}
 
     def get_close_state(self):
         return {
@@ -178,7 +182,7 @@ class CloseController:
                 if choice == "cancel":
                     dialog.CancelButton = button
             warning = Label()
-            warning.Text = "При закрытии с выгрузкой из памяти перевод остановится.\nПрогресс и очередь сохранятся; их можно продолжить при следующем запуске."
+            warning.Text = "Полное закрытие останавливает перевод."
             warning.Location = Point(22, 153)
             warning.Size = Size(600, 58)
             dialog.Controls.Add(warning)
@@ -266,3 +270,6 @@ class CloseApi:
 
     def get_close_state(self):
         return self._controller.get_close_state()
+
+    def set_close_choice(self, choice):
+        return self._controller.set_close_choice(choice)

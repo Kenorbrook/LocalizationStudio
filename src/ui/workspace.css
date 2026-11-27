@@ -88,23 +88,22 @@ body .right {
 .project-path button {
   white-space: nowrap;
 }
-.cloud-panel,
 .cloud-list,
 .cloud-entry,
 .cloud-editor,
 .cloud-scopes {
   display: grid;
-  gap: 8px;
+  gap: 12px;
 }
-.cloud-panel > button {
-  justify-self: start;
-}
-.cloud-entry,
-.cloud-editor {
+.cloud-entry {
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 12px;
+  padding: 16px;
   overflow-wrap: anywhere;
+}
+.cloud-editor label:not(.update-option) {
+  display: grid;
+  gap: 6px;
 }
 .text-menu {
   position: fixed;
@@ -672,12 +671,72 @@ body .ux-toggle input {
 .ux-settings-content #connectMcp {
   margin-top: 15px;
 }
-.ux-application-preferences {
+.app-setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px 18px;
   border-bottom: 1px solid var(--line);
-  padding-bottom: 18px;
+  padding: 16px 0;
 }
-.ux-application-preferences #closePrefsMenu {
+.app-setting-row h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin: 0;
+}
+.app-setting-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-left: auto;
+}
+.app-setting-value {
+  text-align: right;
+}
+dialog.settings-popup {
+  width: 500px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 40px);
+  padding: 0;
+  overflow: hidden;
+}
+dialog.settings-popup[open] {
+  display: flex;
+  flex-direction: column;
+}
+.settings-popup .updates-header {
+  flex: 0 0 auto;
+}
+.settings-popup-close {
+  font-size: 24px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+}
+.settings-popup-body {
+  padding: 20px 22px 24px;
+  overflow: auto;
+  min-height: 0;
+}
+#cloudCatalogDialog {
+  width: 860px;
+}
+#cloudCatalogDialog .cloud-list {
+  min-height: min(320px, 48vh);
+  align-content: start;
+}
+#closeChoiceDialog form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+#closeChoiceDialog select {
+  flex: 1 1 240px;
+  min-width: 0;
 }
 body #updatesBody > h3 {
   margin-top: 24px;

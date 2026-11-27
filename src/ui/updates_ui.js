@@ -94,14 +94,24 @@ const updateTransfer = element("p", undefined, "sub");
 updateTransfer.id = "updateTransfer";
 updateTransfer.hidden = true;
 updateProgress.after(updateTransfer);
-const updateSource = element(
-  "p",
-  "Источник: GitHub Releases · Kenorbrook/LocalizationStudio. Перед установкой создаётся резервная копия; приложение перезапустится, сохранив очередь и настройки.",
-  "sub",
-);
-updateSource.id = "updateSource";
-updateSource.hidden = true;
-updatesBody.append(updateSource);
+function settingsPopup(id, title, content) {
+  const popup = element("dialog", undefined, "settings-popup");
+  popup.id = id;
+  const header = element("div", undefined, "updates-header");
+  const heading = element("h2", title);
+  heading.id = id + "Title";
+  popup.setAttribute("aria-labelledby", heading.id);
+  const close = element("button", "×", "settings-popup-close");
+  close.type = "button";
+  close.setAttribute("aria-label", "Закрыть");
+  close.onclick = () => popup.close();
+  close.setAttribute("autofocus", "");
+  header.append(heading, close);
+  content.classList.add("settings-popup-body");
+  popup.append(header, content);
+  document.body.append(popup);
+  return popup;
+}
 const appAbout = element("section", undefined, "app-about");
 appAbout.id = "appAbout";
 const aboutHeading = element("div", undefined, "app-about-heading");
@@ -141,7 +151,6 @@ function displayUpdateState(state) {
   footerUpdate.disabled = ["checking", "downloading", "installing"].includes(
     state.phase,
   );
-  updateSource.hidden = !available;
   setText(updateMessage, state.message);
   const busy = ["checking", "downloading", "installing"].includes(state.phase);
   checkUpdates.disabled = busy;
@@ -183,12 +192,6 @@ installUpdate.onclick = guard(async () => {
   if (studioState.dirty.size)
     throw Error("Сохраните или отмените ручные правки перед установкой");
   $("infoTitle").textContent = "Установить версию " + updateState.latest + "?";
-  $("infoContent").replaceChildren(
-    element(
-      "p",
-      "Текущие запросы завершатся, очередь сохранится. Приложение перезапустится; работающие задачи продолжатся с прежними параметрами. Проекты, переводы и настройки останутся. Перед заменой файлов будет создана резервная копия.",
-    ),
-  );
   const confirm = element("button", "Установить и перезапустить", "primary");
   confirm.id = "confirmInstallUpdate";
   confirm.onclick = guard(async () => {
@@ -196,11 +199,14 @@ installUpdate.onclick = guard(async () => {
     $("infoDialog").close();
     openAppSettings();
   });
-  $("infoContent").append(confirm);
+  $("infoContent").replaceChildren(confirm);
   $("infoDialog").showModal();
 });
 function openAppSettings() {
-  if (!updatesDialog.open) updatesDialog.showModal();
+  if (!updatesDialog.open) {
+    updatesDialog.showModal();
+    updatesDialog.dispatchEvent(new Event("settingsopened"));
+  }
   updatesBody.scrollTop = 0;
   updatesClose.focus({ preventScroll: true });
   refreshUpdates().catch((error) => toast(error.message));

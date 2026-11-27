@@ -152,6 +152,108 @@ void (async () => {
     } finally {
       request = originalRequest;
     }
+
+    $("appSettings").click();
+    const settingsPanel = $("updatesDialog");
+    const catalogDialog = $("cloudCatalogDialog");
+    const editorDialog = $("cloudEditorDialog");
+    const addCloud = $("addCloudConnection");
+    const manageCloud = $("manageCloudConnections");
+    const cloudTitle = $("cloudConnections").querySelector("h3");
+    const closeButton = $("changeCloseChoice");
+    check(
+      settingsPanel.contains(addCloud) &&
+        settingsPanel.contains(manageCloud) &&
+        !settingsPanel.querySelector(".cloud-list") &&
+        Math.abs(
+          cloudTitle.getBoundingClientRect().top -
+            addCloud.getBoundingClientRect().top,
+        ) < 16 &&
+        addCloud.getBoundingClientRect().right <
+          manageCloud.getBoundingClientRect().right,
+      "API actions are next to the heading with no embedded list",
+    );
+    await addCloud.onclick();
+    check(
+      editorDialog.open &&
+        !catalogDialog.open &&
+        editorDialog.querySelector('input[type="password"]').type ===
+          "password",
+      "add opens only the masked-key form",
+    );
+    editorDialog.close();
+    await manageCloud.onclick();
+    check(
+      catalogDialog.open &&
+        catalogDialog.offsetWidth > settingsPanel.offsetWidth &&
+        catalogDialog.textContent.includes("first-model") &&
+        catalogDialog.textContent.includes("Все проекты"),
+      "wide API catalog lists models and project scope",
+    );
+    const keyCard = [...catalogDialog.querySelectorAll(".cloud-entry")].find(
+      (card) => card.querySelector("strong").textContent === "fixture-scoped",
+    );
+    [...keyCard.querySelectorAll("button")]
+      .find((button) => button.textContent === "Редактировать")
+      .click();
+    const nameField = editorDialog.querySelector("input");
+    check(
+      editorDialog.open &&
+        catalogDialog.open &&
+        nameField.value === "fixture-scoped",
+      "edit opens the selected key form above the catalog",
+    );
+    nameField.value = "Renamed key";
+    await editorDialog
+      .querySelector("form")
+      .onsubmit(new Event("submit", { cancelable: true }));
+    check(
+      !editorDialog.open &&
+        catalogDialog.open &&
+        catalogDialog.textContent.includes("Renamed key"),
+      "edited key returns to refreshed catalog",
+    );
+    catalogDialog.close();
+    check(
+      !closeButton.disabled &&
+        $("closePrefsMenu").querySelector("h3 > .ux-help"),
+      "close action is editable with help beside the heading",
+    );
+    for (const [choice, saved, label] of [
+      ["tray", "tray", "Сворачивать в трей"],
+      ["exit", "exit", "Закрывать и останавливать перевод"],
+      ["ask", null, "Спрашивать каждый раз"],
+    ]) {
+      await closeButton.onclick();
+      const closeDialog = $("closeChoiceDialog");
+      check(closeDialog.open, "open close behavior chooser for " + choice);
+      $("closeChoiceSelect").value = choice;
+      await closeDialog
+        .querySelector("form")
+        .onsubmit(new Event("submit", { cancelable: true }));
+      check(
+        !closeDialog.open &&
+          (await native.get_close_state()).choice === saved &&
+          $("closeChoiceStatus").textContent === label,
+        "persist and display close behavior " + choice,
+      );
+    }
+    const previousUpdateState = await native.get_update_state();
+    displayUpdateState({
+      ...previousUpdateState,
+      latest: "99.0.0",
+      phase: "ready",
+    });
+    await $("installUpdate").onclick();
+    check(
+      $("infoDialog").open &&
+        $("infoContent").childElementCount === 1 &&
+        $("infoContent").firstElementChild.id === "confirmInstallUpdate",
+      "update confirmation contains only the install action",
+    );
+    $("infoDialog").close();
+    displayUpdateState(previousUpdateState);
+    settingsPanel.close();
     window.__featureProbe = { passed: true, checks };
   } catch (error) {
     window.__featureProbe = {

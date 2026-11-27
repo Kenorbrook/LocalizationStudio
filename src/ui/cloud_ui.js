@@ -1,9 +1,14 @@
 // Connections live in application settings. Jobs retain the chosen connection and model.
 (() => {
-  const cloudPanel = element("section", undefined, "cloud-panel");
+  const cloudPanel = element("section", undefined, "app-setting-row");
   cloudPanel.id = "cloudConnections";
   const cloudList = element("div", undefined, "cloud-list");
-  const openCloudSettings = element("button", "Управлять API-ключами");
+  const catalogPopup = settingsPopup(
+    "cloudCatalogDialog",
+    "API-ключи",
+    cloudList,
+  );
+  const openCloudSettings = element("button", "Настроить API-ключи");
   const connectionPicker = element("select");
   connectionPicker.id = "cloudConnectionPicker";
   const modelList = element("select");
@@ -46,7 +51,11 @@
   connectionPicker.after(refreshModels, modelStatus);
 
   const connectionEditor = element("form", undefined, "cloud-editor");
-  connectionEditor.hidden = true;
+  const editorPopup = settingsPopup(
+    "cloudEditorDialog",
+    "Добавить API-ключ",
+    connectionEditor,
+  );
   const connectionName = element("input");
   const connectionEndpoint = element("input");
   connectionEndpoint.type = "url";
@@ -64,10 +73,8 @@
   saveConnection.type = "submit";
   const cancelConnection = element("button", "Отмена");
   cancelConnection.type = "button";
-  cancelConnection.onclick = () => {
-    connectionKey.value = "";
-    connectionEditor.hidden = true;
-  };
+  cancelConnection.onclick = () => editorPopup.close();
+  editorPopup.addEventListener("close", () => (connectionKey.value = ""));
   editorActions.append(saveConnection, cancelConnection);
   const nameField = element("label", "Название");
   nameField.append(connectionName);
@@ -85,12 +92,12 @@
     editorActions,
   );
   const addConnection = element("button", "Добавить API-ключ");
-  cloudPanel.append(
-    element("h3", "API-ключи"),
-    addConnection,
-    cloudList,
-    connectionEditor,
-  );
+  addConnection.id = "addCloudConnection";
+  const manageConnections = element("button", "Настроить API-ключи");
+  manageConnections.id = "manageCloudConnections";
+  const catalogActions = element("div", undefined, "app-setting-actions");
+  catalogActions.append(addConnection, manageConnections);
+  cloudPanel.append(element("h3", "API-ключи"), catalogActions);
   updatesBody.prepend(cloudPanel);
   let cloudCatalog = [];
   let cloudProject = 0;
@@ -101,6 +108,10 @@
 
   function openConnectionEditor(item) {
     editConnectionId = item?.id || "";
+    setText(
+      $("cloudEditorDialogTitle"),
+      item ? "Редактировать API-ключ" : "Добавить API-ключ",
+    );
     connectionName.value = item?.name || "";
     connectionEndpoint.value = item?.endpoint || "";
     connectionEndpoint.readOnly = !!item;
@@ -108,18 +119,24 @@
     keyField.hidden = !!item;
     allProjects.checked = !item?.projects;
     projectScopes.hidden = allProjects.checked;
+    const available = new Map(
+      (studioState.snapshot?.projects || []).map((p) => [p.id, p.name]),
+    );
+    for (const id of item?.projects || []) {
+      if (!available.has(id)) available.set(id, "Проект #" + id);
+    }
     projectScopes.replaceChildren(
-      ...(studioState.snapshot?.projects || []).map((project) => {
+      ...[...available].map(([id, name]) => {
         const label = element("label", undefined, "update-option");
         const input = element("input");
         input.type = "checkbox";
-        input.value = project.id;
-        input.checked = item?.projects?.includes(project.id) === true;
-        label.append(input, document.createTextNode(" " + project.name));
+        input.value = id;
+        input.checked = item?.projects?.includes(id) === true;
+        label.append(input, document.createTextNode(" " + name));
         return label;
       }),
     );
-    connectionEditor.hidden = false;
+    editorPopup.showModal();
     connectionName.focus();
   }
   addConnection.onclick = () => openConnectionEditor();
@@ -172,7 +189,7 @@
           }
         });
         actions.append(copy, models);
-        const edit = element("button", "Настроить");
+        const edit = element("button", "Редактировать");
         edit.onclick = () => openConnectionEditor(item);
         if (!item.legacy) actions.append(edit);
         card.append(
@@ -190,13 +207,7 @@
       }),
     );
     if (!cloudCatalog.length)
-      cloudList.append(
-        element(
-          "p",
-          "Добавьте подключение, чтобы выбрать облачную модель.",
-          "sub",
-        ),
-      );
+      cloudList.append(element("p", "Нет API-ключей", "sub"));
   }
   function renderModelOptions() {
     const item = catalogItem();
@@ -274,6 +285,7 @@
   }
   connectionEditor.onsubmit = guard(async (event) => {
     event.preventDefault();
+    const editing = !!editConnectionId;
     saveConnection.disabled = true;
     try {
       const identity = await apiBridge().save_cloud_connection({
@@ -287,22 +299,21 @@
               Number(input.value),
             ),
       });
-      cancelConnection.onclick();
+      editorPopup.close();
       await loadCloudCatalog();
-      if (!editConnectionId) await fetchCloudModels(catalogItem(identity));
+      if (!editing) await fetchCloudModels(catalogItem(identity));
     } finally {
       saveConnection.disabled = false;
     }
   });
-  openCloudSettings.onclick = guard(async () => {
+  const openCatalog = guard(async () => {
     if (!apiBridge()?.cloud_connections)
       throw Error("Откройте настройки в приложении");
-    if (!updatesDialog.open) updatesDialog.showModal();
-    cloudPanel.scrollIntoView({ block: "start" });
+    renderCloudCatalog();
+    if (!catalogPopup.open) catalogPopup.showModal();
     await loadCloudCatalog();
   });
-  appSettings.addEventListener("click", guard(loadCloudCatalog));
-  updatesDialog.addEventListener("close", () => cancelConnection.onclick());
+  openCloudSettings.onclick = manageConnections.onclick = openCatalog;
   const selectConnection = guard(async (identity) => {
     if (connectionIdentity.value === identity) return;
     connectionIdentity.value = identity;

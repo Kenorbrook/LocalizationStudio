@@ -160,7 +160,7 @@ class UpdateController:
                 archive.unlink(missing_ok=True)
             self._set(
                 phase="ready",
-                message="Сборка проверена и готова к установке. Проекты и настройки сохранятся.",
+                message="Готово к установке",
             )
 
         return self._launch("downloading", action)
@@ -238,9 +238,7 @@ class UpdateController:
                             "UPDATE jobs SET state='paused' WHERE state IN ('running','queued')"
                         )
                         db.execute("UPDATE jobs SET state='held' WHERE state='waiting'")
-                self._set(
-                    message="Ждём завершения текущих запросов. Очереди сохранены…"
-                )
+                self._set(message="Завершаем текущие запросы…")
                 from updater import wait_for_exit
                 from project_lifecycle import matches_worker
 

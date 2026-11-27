@@ -482,11 +482,7 @@ function showErrorParameters(error) {
   if (error.bulk) back.textContent = "← К списку ошибок";
   const actions = element("div", undefined, "flex wrap");
   actions.append(send, back);
-  const hint = element(
-    "p",
-    "Параметры применятся только к новой очереди. Основная задача и настройки проекта сохранятся.",
-    "sub hint",
-  );
+  const hint = element("p", "Параметры только для этого повтора.", "sub hint");
   for (const node of [hint, estimate, actions, message])
     node.style.gridColumn = "1 / -1";
   form.append(hint, estimate, actions, message);

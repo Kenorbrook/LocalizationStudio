@@ -448,19 +448,71 @@ const workspaceUi = (() => {
   detectionSummary.hidden = true;
   fileSources.append(detectionSummary);
 
-  // Application preferences do not belong to a particular game.
-  const application = element(
-    "section",
-    undefined,
-    "ux-application-preferences",
+  const application = element("section", undefined, "app-setting-row");
+  application.id = "closePrefsMenu";
+  const closeTitle = element("h3", "Действия при закрытии");
+  closeTitle.append(
+    help(
+      "Действие при нажатии на крестик окна. В трее перевод продолжается.",
+      "О действиях при закрытии",
+    ),
   );
-  application.append(element("h3", "Поведение окна"), closePrefsMenu);
-  closePrefsMenu.open = true;
-  closePrefsMenu.querySelector("summary").hidden = true;
+  const closeStatus = element("span", undefined, "sub app-setting-value");
+  closeStatus.id = "closeChoiceStatus";
+  const changeClose = element("button", "Изменить поведение");
+  changeClose.id = "changeCloseChoice";
+  const closeActions = element("div", undefined, "app-setting-actions");
+  closeActions.append(closeStatus, changeClose);
+  application.append(closeTitle, closeActions);
   updatesBody.prepend(application);
-  appSettings.addEventListener("click", () =>
-    updateCloseChoice().catch((error) => toast(error.message)),
+
+  const closeOptions = {
+    ask: "Спрашивать каждый раз",
+    tray: "Сворачивать в трей",
+    exit: "Закрывать и останавливать перевод",
+  };
+  const closeForm = element("form");
+  const closeSelect = element("select");
+  closeSelect.id = "closeChoiceSelect";
+  closeSelect.setAttribute("aria-label", "Действие при закрытии");
+  for (const [value, label] of Object.entries(closeOptions)) {
+    const option = element("option", label);
+    option.value = value;
+    closeSelect.append(option);
+  }
+  const saveClose = element("button", "Сохранить", "primary");
+  saveClose.type = "submit";
+  closeForm.append(closeSelect, saveClose);
+  const closePopup = settingsPopup(
+    "closeChoiceDialog",
+    "Действия при закрытии",
+    closeForm,
   );
+  async function updateCloseChoice() {
+    if (!window.pywebview?.api?.get_close_state) return;
+    const { choice } = await window.pywebview.api.get_close_state();
+    closeStatus.textContent = closeOptions[choice || "ask"];
+    return choice || "ask";
+  }
+  changeClose.onclick = guard(async () => {
+    closeSelect.value = (await updateCloseChoice()) || "ask";
+    closePopup.showModal();
+    closeSelect.focus();
+  });
+  closeForm.onsubmit = guard(async (event) => {
+    event.preventDefault();
+    saveClose.disabled = true;
+    try {
+      const { choice } = await window.pywebview.api.set_close_choice(
+        closeSelect.value === "ask" ? null : closeSelect.value,
+      );
+      closeStatus.textContent = closeOptions[choice || "ask"];
+      closePopup.close();
+    } finally {
+      saveClose.disabled = false;
+    }
+  });
+  updatesDialog.addEventListener("settingsopened", guard(updateCloseChoice));
   const appAdvanced = element("details", undefined, "ux-advanced");
   appAdvanced.append(element("summary", "Автоматические обновления"));
   for (const input of Object.values(updateOptions))
@@ -611,7 +663,6 @@ const workspaceUi = (() => {
     "#runLimits > p.sub",
     "#newRunLimits > p.sub",
     "#historySettings > p.sub",
-    "#closePrefsMenu > p.sub:not([id])",
     "#projectManager .manager-group > p",
     "#appAbout > p.sub:not([id])",
     "main > aside:first-child > p.sub",

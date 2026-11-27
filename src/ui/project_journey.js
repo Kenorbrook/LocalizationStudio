@@ -10,11 +10,7 @@ const projectJourney = (() => {
     modelsSequence = 0;
   const pane = element("section");
   pane.id = "projectJourney";
-  const heading = element("div", undefined, "journey-heading");
-  heading.append(
-    element("h2", "Перевод игры: от папки до результата"),
-    element("span", "Локально · без облачного API", "journey-local"),
-  );
+  const heading = element("h2", "Перевод игры");
   const runtime = element(
     "p",
     "Ollama и локальные модели: ещё не проверены",
@@ -515,10 +511,10 @@ const projectJourney = (() => {
     setText(
       runtime,
       !result.online
-        ? "Ollama недоступна · импорт и работа с текстом доступны без модели"
+        ? "Ollama недоступна"
         : result.models?.length
-          ? `Ollama доступна · установлено моделей: ${result.models.length} · облачный ключ не нужен`
-          : "Ollama доступна · сначала установите локальную модель",
+          ? `Локальных моделей: ${result.models.length}`
+          : "Нет установленных моделей Ollama",
     );
   });
   studioLifecycle.register("navigate", "projectJourney", () => {

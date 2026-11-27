@@ -1,5 +1,5 @@
 (async()=>{try{
-await refresh(true);const statusLegendRemoved=!$('statusHelp');await updateCloseChoice();const clearClosePreference=$('resetCloseChoice').textContent==='Снова спрашивать при закрытии'&&$('closeChoiceStatus').textContent.startsWith('Сейчас:');const analysis=await request('project-analysis?project='+studioState.project);
+await refresh(true);const statusLegendRemoved=!$('statusHelp');const clearClosePreference=$('changeCloseChoice').textContent==='Изменить поведение'&&!$('changeCloseChoice').disabled;const analysis=await request('project-analysis?project='+studioState.project);
 await $('inspectProject').onclick();const detectionVisible=$('detectionDialog').open&&$('detectionBody').textContent.includes('Как внедрять перевод');$('detectionDialog').close();
 const rows=await request('records?file='+studioState.snapshot.files[0].id);await showRecordContext(rows.rows[0].id);await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
 const body=$('infoContent'),phrase=body.querySelector('[data-context-id]'),bodyRect=body.getBoundingClientRect(),phraseRect=phrase.getBoundingClientRect();

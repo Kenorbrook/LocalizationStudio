@@ -451,7 +451,7 @@ aside {
 }
 #updatesDialog {
   padding: 0;
-  width: 520px;
+  width: 660px;
   max-width: calc(100vw - 40px);
   max-height: calc(100vh - 40px);
   overflow: hidden;

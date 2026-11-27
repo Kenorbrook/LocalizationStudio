@@ -18,26 +18,12 @@ body[data-project-guide="task"] #setupCard {
 #projectJourney {
   margin: 20px 0 24px;
 }
-.journey-heading {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-}
-.journey-heading h2 {
+#projectJourney > h2 {
   margin: 0;
   font-size: 20px;
   color: var(--ink);
   text-transform: none;
   letter-spacing: normal;
-}
-.journey-local {
-  border: 1px solid #4e7a6a;
-  border-radius: 20px;
-  padding: 5px 12px;
-  color: var(--accent);
-  font-size: 12px;
 }
 .journey-boundary {
   background: #25271e;

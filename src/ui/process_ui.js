@@ -325,7 +325,7 @@ folderBody.prepend(folderProjectSettings);
 const folderLimits = createRunLimitControls(
   "folderRunLimits",
   "Лимит этой редактуры",
-  "Действует только на новую очередь редактуры. После достижения лимита очередь сохранится на паузе; параметры проекта не меняются.",
+  "По достижении лимита эта очередь встанет на паузу.",
 );
 folderBody.insertBefore(folderLimits.section, folderBody.lastElementChild);
 folderClose.onclick = () => folderDialog.close();
@@ -389,7 +389,7 @@ folderRun.onclick = guard(async () => {
   folderDialog.close();
   restoreFolderSettings();
   await refresh();
-  toast("Редактура папки запущена; пометки останутся");
+  toast("Редактура папки запущена");
 });
 folderClear.onclick = guard(async () => {
   if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
