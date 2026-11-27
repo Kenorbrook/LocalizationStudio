@@ -143,6 +143,7 @@ for (const mode of ["queue", "flags", "preserved"]) {
       studioState.processTab,
       studioState.markKind,
       studioState.processOffset,
+      studioState.job?.id,
       studioState.marksOffset,
       [...markedVisit.retained],
     ]);
@@ -154,7 +155,7 @@ for (const mode of ["queue", "flags", "preserved"]) {
       queue: () =>
         studioState.processTab === "history"
           ? `process-history?project=${studioState.project}&offset=${studioState.processOffset}`
-          : `queue?project=${studioState.project}`,
+          : `queue?project=${studioState.project}&job=${studioState.job?.id || 0}`,
     };
     return {
       identity,

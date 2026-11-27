@@ -38,7 +38,7 @@ def records(store, q, port):
 
 
 def queue(store, q, port):
-    data = queue_page(store, int(q["project"]))
+    data = queue_page(store, int(q["project"]), int(q.get("job", 0)))
     return data
 
 

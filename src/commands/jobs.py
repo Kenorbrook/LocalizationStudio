@@ -122,6 +122,62 @@ def job(store, data):
     }
 
 
+def parallel_job(store, data):
+    from contextlib import nullcontext
+
+    pid = int(data["project"])
+    stage = data["stage"]
+    provider = data["provider"]
+    split_from = int(data.get("split_from") or 0)
+    take = data.get("take", 0)
+    if type(take) is not int or take < 0 or take > 1000000:
+        raise ValueError("Укажите количество строк от 0 до 1 000 000")
+    if stage not in {"translate", "review", "cloud"} or (
+        split_from and stage != "translate"
+    ):
+        raise ValueError("Некорректный этап параллельной задачи")
+    with getattr(store, "launch_lock", nullcontext()):
+        if getattr(store, "engine_mutation", None):
+            raise ValueError("Дождитесь подготовки или сборки копии игры")
+        if getattr(store, "hermes_inference", False) or getattr(
+            store, "closing", False
+        ):
+            raise ValueError("Сейчас нельзя запустить обработчик")
+        with store.db() as db:
+            row = db.execute(
+                "SELECT settings FROM projects WHERE id=? AND deleting=0", (pid,)
+            ).fetchone()
+        if not row:
+            raise ValueError("Проект не найден")
+        options = {k: v for k, v in data["settings"].items() if not k.startswith("_")}
+        options["analyze_before_translate"] = False
+        settings = validate_job_settings(
+            store, pid, provider, options, json.loads(row[0])
+        )
+        jid = store.create_job(
+            pid,
+            stage,
+            provider,
+            settings,
+            file=data.get("file"),
+            parallel=True,
+            split_from=split_from,
+            take=take,
+        )
+        try:
+            job_runtime.launch(store, jid)
+        except Exception:
+            with store.db() as db:
+                db.execute(
+                    "UPDATE jobs SET state='paused',error='Не удалось запустить обработчик' WHERE id=? AND state='queued'",
+                    (jid,),
+                )
+            raise ValueError(
+                "Не удалось запустить обработчик; задача сохранена"
+            ) from None
+    return {"job": jid}
+
+
 def control(store, data):
     if data.get("mode") == "resume" and getattr(store, "hermes_inference", False):
         raise ValueError("Сначала завершите или остановите работу Hermes")
@@ -131,16 +187,22 @@ def control(store, data):
     jid = int(data["id"])
     mode = data["mode"]
     with store.db() as db:
+        db.execute("BEGIN IMMEDIATE")
         job = db.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
         if not job:
             raise ValueError("Задача не найдена")
         if mode == "resume":
             if job["state"] not in {"paused", "held"}:
                 raise ValueError("Продолжить можно задачу на паузе")
-            if db.execute(
-                "SELECT id FROM jobs WHERE project=? AND id<>? AND (state IN ('running','queued','paused') OR worker_active=1)",
+            peers = db.execute(
+                "SELECT id,parallel,stage FROM jobs WHERE project=? AND id<>? AND (state IN ('running','queued','paused') OR worker_active=1)",
                 (job["project"], jid),
-            ).fetchone():
+            ).fetchall()
+            if any(
+                "analyze" in (job["stage"], peer["stage"])
+                or not (job["parallel"] or peer["parallel"])
+                for peer in peers
+            ):
                 raise ValueError("Сначала завершите текущую задачу проекта")
             if job["worker_active"]:
                 raise ValueError(
@@ -162,6 +224,17 @@ def control(store, data):
             settings = resume_settings(settings, data.get("settings", {}))
             if data.get("retry_records"):
                 requeue(db, job, data["retry_records"])
+            if (
+                peers
+                and db.execute(
+                    "SELECT 1 FROM queue q JOIN queue other ON other.record=q.record "
+                    "JOIN jobs j ON j.id=other.job WHERE q.job=? AND q.state='pending' "
+                    "AND other.job<>? AND other.state='pending' AND j.project=? "
+                    "AND (j.state IN ('running','queued','paused') OR j.worker_active=1) LIMIT 1",
+                    (jid, jid, job["project"]),
+                ).fetchone()
+            ):
+                raise ValueError("Часть строк уже принадлежит другой активной очереди")
             if data.get("record_overrides") is not None:
                 from error_workflow import save_overrides
 

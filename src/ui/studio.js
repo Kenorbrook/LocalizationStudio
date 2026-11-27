@@ -207,7 +207,13 @@ async function refreshState(initial = false) {
       );
     statsVersion = sv;
   }
+  const selectedJob = studioState.selectedJobs.get(studioState.project);
   studioState.job =
+    studioState.snapshot.jobs.find(
+      (j) =>
+        j.id === selectedJob &&
+        ["running", "queued", "paused", "held"].includes(j.state),
+    ) ||
     studioState.snapshot.jobs.find((j) => j.state === "running") ||
     studioState.snapshot.jobs.find((j) => j.state === "queued") ||
     studioState.snapshot.jobs.find((j) => j.state === "paused") ||
@@ -342,6 +348,17 @@ function pendingTranslationText(job) {
     }[job?.state] || "Результат этой строки ещё не сохранён."
   );
 }
+
+function usesSavedExecutor(job) {
+  return !!(
+    job?.parallel ||
+    studioState.snapshot?.jobs.some(
+      (other) =>
+        other.parallel && ["running", "queued", "paused"].includes(other.state),
+    )
+  );
+}
+
 function currentRecordPage() {
   if (["home", "errors", "plugins"].includes(studioState.viewMode)) return null;
   const specialized = studioLifecycle.page(studioState.viewMode);
@@ -696,6 +713,15 @@ function resumeExecutionSettings(job) {
 }
 for (let mode of ["pause", "resume", "cancel"])
   $(mode).onclick = guard(async () => {
+    if (mode === "resume" && usesSavedExecutor(studioState.job)) {
+      await request("control", {
+        id: studioState.job.id,
+        mode,
+        preserve_project_settings: true,
+      });
+      await refresh();
+      return;
+    }
     if (
       mode === "resume" &&
       studioState.job?.provider === "cloud" &&

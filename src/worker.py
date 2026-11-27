@@ -70,13 +70,16 @@ def run(store, jid, provider_factory=Provider):
 
     def complete_record(rid, outcome):
         nonlocal processed, elapsed
-        processed += 1
-        elapsed = max(0, time.monotonic() - started)
-        rate = processed * 60 / max(0.01, elapsed)
         with store.db() as db:
-            db.execute(
-                "UPDATE queue SET state=? WHERE job=? AND record=?", (outcome, jid, rid)
+            changed = db.execute(
+                "UPDATE queue SET state=? WHERE job=? AND record=? AND state='pending'",
+                (outcome, jid, rid),
             )
+            if not changed.rowcount:
+                return
+            processed += 1
+            elapsed = max(0, time.monotonic() - started)
+            rate = processed * 60 / max(0.01, elapsed)
             db.execute(
                 "UPDATE jobs SET done=done+1,rate=?,run_done=?,run_elapsed=? WHERE id=?",
                 (rate, processed, elapsed, jid),

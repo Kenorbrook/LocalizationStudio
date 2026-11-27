@@ -7,6 +7,7 @@ const studioState = {
   rows: [],
   snapshot: null,
   job: null,
+  selectedJobs: new Map(),
   busy: false,
   lastStage: "translate",
   dirty: new Set(),

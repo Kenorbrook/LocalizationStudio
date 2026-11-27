@@ -103,6 +103,7 @@ class Store:
         allow_manual=False,
         record_ids=None,
         defer=False,
+        **queue_options,
     ):
         return self.jobs.create_job(
             project,
@@ -115,6 +116,7 @@ class Store:
             allow_manual,
             record_ids,
             defer,
+            **queue_options,
         )
 
     def error(self, job, record, message, candidate=""):

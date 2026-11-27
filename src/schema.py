@@ -94,11 +94,15 @@ def initialize(db):
         ("run_done", "INTEGER DEFAULT 0"),
         ("worker_launch", "TEXT DEFAULT ''"),
         ("retry_at", "REAL NOT NULL DEFAULT 0"),
+        ("parallel", "INTEGER NOT NULL DEFAULT 0"),
     ]:
         if name not in job_columns:
             db.execute(f"ALTER TABLE jobs ADD COLUMN {name} {definition}")
     if "worker_active" not in job_columns:
         db.execute("ALTER TABLE jobs ADD COLUMN worker_active INTEGER DEFAULT 0")
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS queue_pending_record ON queue(record,job) WHERE state='pending'"
+    )
     if "budget_json" not in {r[1] for r in db.execute("PRAGMA table_info(errors)")}:
         db.execute("ALTER TABLE errors ADD COLUMN budget_json TEXT DEFAULT '{}'")
     for name, definition in [

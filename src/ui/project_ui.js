@@ -419,6 +419,7 @@ mainAction.onclick = guard(async () => {
   if (
     ["paused", "held"].includes(studioState.job?.state) &&
     studioState.job.provider === "cloud" &&
+    !usesSavedExecutor(studioState.job) &&
     !cloudEnabled.checked
   )
     throw Error(
@@ -479,7 +480,9 @@ function updateTaskActions() {
   );
   const savedJob = active ? JSON.parse(studioState.job.settings || "{}") : {};
   const currentSettings = active
-    ? studioState.job.state === "paused" && !savedJob._retry_origin
+    ? studioState.job.state === "paused" &&
+      !savedJob._retry_origin &&
+      !usesSavedExecutor(studioState.job)
       ? { ...savedJob, ...resumeExecutionSettings(studioState.job) }
       : savedJob
     : Object.fromEntries(

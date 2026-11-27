@@ -32,6 +32,7 @@ HANDLERS = {
     "error-budget": jobs.error_budget,
     "retry-errors": jobs.retry_errors,
     "job": jobs.job,
+    "parallel-job": jobs.parallel_job,
     "control": jobs.control,
     "process-settings": settings.process_settings,
     "language-preview": settings.language_preview,

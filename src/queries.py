@@ -182,10 +182,10 @@ def state(store, project, editing=False):
     }
 
 
-def queue_page(store, project):
+def queue_page(store, project, selected=0):
     from process_view import queue_page as upcoming
 
-    return upcoming(store, project)
+    return upcoming(store, project, selected)
 
 
 def records(store, file, offset=0, search="", status=""):

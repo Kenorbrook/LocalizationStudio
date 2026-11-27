@@ -49,13 +49,19 @@ def save_preferences(store, pid, values):
 FIELDS = "r.*,f.path,coalesce(m.kind,'') flag,m.at flagged_at,m.was_manual flag_previous_manual,coalesce(json_extract((SELECT result FROM language_checks WHERE record=r.id),'$.reason'),'') language_note,coalesce((SELECT reason FROM preserved_records WHERE record=r.id),'') preserve_reason,coalesce((SELECT kind FROM preserved_records WHERE record=r.id),'') preserve_kind"
 
 
-def queue_page(store, pid):
+def queue_page(store, pid, selected=0):
     pref = preferences(store, pid)
     with store.db() as db:
-        job = db.execute(
-            "SELECT * FROM jobs WHERE project=? AND state IN ('queued','running','paused') ORDER BY id DESC LIMIT 1",
-            (pid,),
-        ).fetchone()
+        if selected:
+            job = db.execute(
+                "SELECT * FROM jobs WHERE project=? AND id=?",
+                (pid, selected),
+            ).fetchone()
+        else:
+            job = db.execute(
+                "SELECT * FROM jobs WHERE project=? AND state IN ('queued','running','paused') ORDER BY id DESC LIMIT 1",
+                (pid,),
+            ).fetchone()
         if not job:
             return {
                 "rows": [],

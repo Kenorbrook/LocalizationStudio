@@ -293,6 +293,85 @@ void (async () => {
     } finally {
       request = originalRequest;
     }
+    let newTaskPayload;
+    let selectedQueuePath;
+    const addedQueue = {
+      id: 99,
+      state: "paused",
+      stage: "review",
+      provider: "local",
+      settings: JSON.stringify({ model: "local-fixture" }),
+      done: 1,
+      total: 3,
+      current: null,
+      parallel: 1,
+      retry_at: 0,
+    };
+    request = async (path, body) => {
+      if (path === "models") return { online: true, models: ["local-fixture"] };
+      if (path === "parallel-job") {
+        newTaskPayload = body;
+        return { job: 99 };
+      }
+      if (path === "job-log?id=99") return { text: "Review fixture log" };
+      const response = await originalRequest(path, body);
+      if (path.startsWith("queue?")) selectedQueuePath = path;
+      if (path.startsWith("state?")) {
+        response.jobs[0].total = 8;
+        if (newTaskPayload) response.jobs.push(addedQueue);
+      }
+      return response;
+    };
+    try {
+      await refresh(true);
+      showView("queue");
+      await $("startParallelQueue").onclick();
+      const parallelForm = $("parallelQueueDialog").querySelector("form");
+      const [purpose, source, , executor] =
+        parallelForm.querySelectorAll("select");
+      check(
+        $("parallelQueueDialog").open &&
+          purpose.value === "review" &&
+          [...executor.options].some(
+            (item) => item.value === "api:fixture-global",
+          ),
+        "parallel launch offers separate local and API executors",
+      );
+      executor.value = "local:local-fixture";
+      executor.onchange();
+      await parallelForm.onsubmit(new Event("submit", { cancelable: true }));
+      check(
+        newTaskPayload.stage === "review" &&
+          newTaskPayload.settings.model === "local-fixture" &&
+          studioState.job.id === 99 &&
+          selectedQueuePath.endsWith("&job=99") &&
+          $("jobLog").textContent.includes("Review fixture log"),
+        "parallel selection targets the new task and its own queue and log",
+      );
+      await $("splitParallelQueue").onclick();
+      check(
+        $("parallelQueueDialog").open &&
+          purpose.value === "translate" &&
+          !!source.value &&
+          $("parallelQueueDialogTitle").textContent === "Разделить очередь",
+        "split chooses a live translation queue and preserves its stage",
+      );
+      const target = +source.value;
+      executor.value = "api:fixture-global";
+      executor.onchange();
+      parallelForm.querySelector("[list=parallelCloudModels]").value =
+        "second-model";
+      await parallelForm.onsubmit(new Event("submit", { cancelable: true }));
+      check(
+        newTaskPayload.split_from === target &&
+          newTaskPayload.provider === "cloud" &&
+          newTaskPayload.settings.cloud_connection === "fixture-global" &&
+          newTaskPayload.settings.cloud_model === "second-model",
+        "split sends source queue and new API executor independently",
+      );
+    } finally {
+      request = originalRequest;
+    }
     window.__featureProbe = { passed: true, checks };
   } catch (error) {
     window.__featureProbe = {

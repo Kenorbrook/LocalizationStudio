@@ -738,6 +738,45 @@ dialog.settings-popup[open] {
   flex: 1 1 240px;
   min-width: 0;
 }
+.parallel-queues,
+.parallel-queue-list,
+.parallel-form {
+  display: grid;
+  gap: 12px;
+}
+.parallel-queues {
+  margin: 12px 0;
+}
+.parallel-queue-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px 14px;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+}
+.parallel-queue-title {
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.parallel-queue-title[aria-pressed="true"] {
+  border-color: var(--accent);
+}
+.parallel-form label {
+  display: grid;
+  gap: 6px;
+}
+.parallel-form > button {
+  justify-self: start;
+}
+@media (max-width: 1100px) {
+  .parallel-queue-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .parallel-queue-row > div {
+    grid-column: 1 / -1;
+  }
+}
 body #updatesBody > h3 {
   margin-top: 24px;
 }
