@@ -272,11 +272,7 @@ const workspaceUi = (() => {
   files.append(manage);
 
   const integrations = section("integrations", "Подключения");
-  const api = group(
-    integrations,
-    "Облачный API",
-    "Необязательное платное подключение. Локальный перевод работает без ключа, оплаты и VPN. Ключ хранится в Windows Credential Manager.",
-  );
+  const api = group(integrations, "Облачный перевод");
   toggle(api, "cloud_enabled", "Разрешить облачные модели для проекта");
   cloudConnection.querySelector("summary").hidden = true;
   cloudConnection.open = true;
@@ -508,6 +504,7 @@ const workspaceUi = (() => {
     updateLimitInput();
     newRunLimits.update();
     updateKnowledgeModel();
+    studioLifecycle.notify("projectCloudSelection");
   }
   useKnowledge.addEventListener("change", () => {
     if (!useKnowledge.checked) autoKnowledge.checked = false;
@@ -614,7 +611,6 @@ const workspaceUi = (() => {
     }
   }
   for (const selector of [
-    "#projectDialog > p.sub",
     "#importDialog > p.sub",
     "#exportDialog > p.sub",
     "#speakerDialog > p.sub",
@@ -662,9 +658,12 @@ const workspaceUi = (() => {
     const state = studioState.job?.state;
     $("live").hidden = !studioState.job?.current;
     const resuming = ["paused", "held"].includes(state);
-    newRunLimits.section.hidden =
-      resuming || ["running", "queued"].includes(state);
-    scope.hidden = resuming || ["running", "queued"].includes(state);
+    const working = ["running", "queued"].includes(state);
+    newRunLimits.section.hidden = resuming || working;
+    scope.hidden = resuming || working;
+    setupCard.hidden = working || resuming;
+    taskMenu.hidden = !working && !resuming && !studioState.snapshot?.errors;
+    $("logDetails").hidden = !studioState.job;
     fileMenu.hidden = studioState.viewMode !== "text";
     $("projectBack").hidden = true;
     const selected = studioState.viewMode;

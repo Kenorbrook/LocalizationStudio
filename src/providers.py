@@ -129,7 +129,10 @@ def json_request(url, data=None, headers=None, local=False):
         {"Content-Type": "application/json", **(headers or {})},
     )
     try:
-        with (DIRECT if local else urllib.request.build_opener()).open(
+        from cloud_connections import NoRedirect
+
+        opener = DIRECT if local else urllib.request.build_opener(NoRedirect())
+        with opener.open(
             req,
             timeout=(
                 LOCAL_CHAT_TIMEOUT if local_chat else 180 if data is not None else 4
@@ -157,6 +160,13 @@ def json_request(url, data=None, headers=None, local=False):
             raise ServiceUnavailable(
                 f"Провайдер временно недоступен: HTTP {e.code}"
             ) from None
+        if not local and e.code in {400, 402}:
+            message = (
+                "Провайдер отклонил запрос (HTTP 400). Проверьте модель и параметры запуска."
+                if e.code == 400
+                else "Провайдер требует оплату (HTTP 402). Проверьте баланс и группу ключа."
+            )
+            raise ServiceUnavailable(message) from None
         # Response bodies can contain echoed authentication data: do not log them.
         raise ServiceUnavailable(
             f"Ошибка провайдера HTTP {e.code}; проверьте адрес, доступ и ключ"
@@ -218,7 +228,7 @@ class Provider:
             )
         if kind == "local" and not models()["online"]:
             print(
-                "Waiting for local Ollama at 127.0.0.1:11434. VPN is not required.",
+                "Ожидание Ollama на 127.0.0.1:11434.",
                 flush=True,
             )
             try:
@@ -340,7 +350,20 @@ class Provider:
             endpoint = self.settings.get("endpoint", "").rstrip("/")
             if urlparse(endpoint).scheme != "https":
                 raise ValueError("Облачный API должен использовать HTTPS")
-            key = secret(self.project["id"])
+            key = (
+                secret(self.project["id"])
+                if not self.settings.get("cloud_connection")
+                else ""
+            )
+            if self.settings.get("cloud_connection"):
+                from cloud_connections import job_key
+
+                try:
+                    key = job_key(
+                        self.settings["_studio_db"], self.project["id"], self.settings
+                    )
+                except ValueError as error:
+                    raise ServiceUnavailable(str(error)) from None
             if not key:
                 raise ServiceUnavailable("Не задан API-ключ")
             body = {

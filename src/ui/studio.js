@@ -11,8 +11,8 @@ const jobLabels = {
   queued: "В очереди",
   running: "Работает",
   paused: "На паузе",
-  done: "DONE",
-  incomplete: "INCOMPLETE",
+  done: "Завершено",
+  incomplete: "Есть ошибки",
   cancelled: "Отменено",
   waiting: "Ожидает",
   held: "Ожидает продолжения",
@@ -75,6 +75,8 @@ function settings() {
 }
 function loadSettings(p) {
   const s = JSON.parse(p.settings || "{}");
+  $("endpoint").value = "";
+  $("cloud_model").value = "";
   for (const [k, v] of Object.entries(s)) {
     if ($(k)) $(k).value = v;
   }
@@ -83,6 +85,37 @@ let projectVersion = "",
   fileVersion = "",
   statsVersion = "",
   liveVersion = "";
+const stageTitles = {
+  translate: "Перевод",
+  review: "Редактура",
+  cloud: "Проверка",
+  analyze: "Анализ проекта",
+};
+function showActivity() {
+  const active = studioState.snapshot.activity || [];
+  const live = active.filter((j) => j.state !== "paused");
+  const task =
+    live.find((j) => j.project === studioState.project) ||
+    live[0] ||
+    active.find((j) => j.project === studioState.project) ||
+    active[0];
+  const button = $("activeProjectJob");
+  button.hidden = !task;
+  if (!task) return;
+  const label = `${task.name} · ${task.state === "paused" ? "Пауза" : stageTitles[task.stage] || "Задача"}`;
+  const count = `${task.done.toLocaleString("ru-RU")} / ${task.total.toLocaleString("ru-RU")}`;
+  const title = `${label} · ${count}${task.model ? " · " + task.model : ""}`;
+  if (button.title !== title) {
+    button.title = title;
+    button.replaceChildren(element("span", label), element("b", count));
+  }
+  button.dataset.project = task.project;
+}
+function jobCount(job) {
+  return job
+    ? `${job.done.toLocaleString("ru-RU")} / ${job.total.toLocaleString("ru-RU")}`
+    : "";
+}
 async function refreshState(initial = false) {
   studioState.snapshot = await request(
     "state?project=" +
@@ -91,6 +124,7 @@ async function refreshState(initial = false) {
       (studioState.dirty.size ? 1 : 0),
   );
   studioState.project = studioState.snapshot.project || 0;
+  showActivity();
   const pv = JSON.stringify(
     studioState.snapshot.projects.map((p) => [p.id, p.name, p.active]),
   );
@@ -168,24 +202,38 @@ async function refreshState(initial = false) {
     statsVersion = sv;
   }
   studioState.job =
-    studioState.snapshot.jobs.find((j) =>
-      ["running", "queued", "paused"].includes(j.state),
-    ) ||
+    studioState.snapshot.jobs.find((j) => j.state === "running") ||
+    studioState.snapshot.jobs.find((j) => j.state === "queued") ||
+    studioState.snapshot.jobs.find((j) => j.state === "paused") ||
     studioState.snapshot.jobs.find((j) => j.state === "held") ||
     studioState.snapshot.jobs.find((j) => j.state !== "waiting") ||
     null;
   setText(
     "jobState",
-    studioState.job ? jobLabels[studioState.job.state] : "Нет задачи",
+    studioState.job
+      ? jobLabels[studioState.job.state] || "Задача"
+      : "Нет задачи",
   );
+  setText("taskStage", stageTitles[studioState.job?.stage] || "Перевод");
   $("progress").max = studioState.job?.total || 1;
   $("progress").value = studioState.job?.done || 0;
-  setText(
-    "progressText",
-    studioState.job
-      ? `${studioState.job.done.toLocaleString("ru-RU")} / ${studioState.job.total.toLocaleString("ru-RU")} строк${studioState.job.error ? " · " + studioState.job.error : ""}${studioState.job.rate ? " · " + studioState.job.rate.toFixed(1) + " строк/мин" : ""}${studioState.job.state === "running" && studioState.job.fragment_total ? " · частей " + studioState.job.fragment_done + "/" + studioState.job.fragment_total : ""}`
-      : "Готово к работе",
-  );
+  const job = studioState.job;
+  const progress = $("progressText");
+  progress.hidden = !job;
+  $("progress").hidden = !job;
+  const progressLabel = jobCount(job);
+  if (
+    progress.dataset.label !== progressLabel ||
+    progress.dataset.rate !== String(job?.rate || 0)
+  ) {
+    progress.dataset.label = progressLabel;
+    progress.dataset.rate = String(job?.rate || 0);
+    progress.replaceChildren(element("strong", progressLabel + " строк"));
+    if (job?.state === "running" && job.rate)
+      progress.append(element("span", job.rate.toFixed(1) + " строк/мин"));
+  }
+  $("progressError").hidden = !job?.error;
+  setText("progressError", job?.error || "");
   $("pause").disabled = !studioState.job || studioState.job.state !== "running";
   $("resume").disabled = !studioState.job || studioState.job.state !== "paused";
   $("cancel").disabled =
@@ -206,6 +254,7 @@ async function refreshState(initial = false) {
           r.id,
           r.source,
           r.text,
+          r.status,
           partial,
           studioState.job?.fragment_done,
           studioState.job?.fragment_total,
@@ -218,7 +267,7 @@ async function refreshState(initial = false) {
     const top = $("live").scrollTop;
     if (r)
       $("live").replaceChildren(
-        element("label", "ОРИГИНАЛ · #" + r.id),
+        element("label", "Оригинал · #" + r.id),
         element("div", r.source),
         element(
           "label",
@@ -228,11 +277,13 @@ async function refreshState(initial = false) {
                 "/" +
                 studioState.job.fragment_total +
                 " · ПРЕДВАРИТЕЛЬНЫЙ РЕЗУЛЬТАТ (КОНЕЦ ТЕКСТА)"
-            : "ПЕРЕВОД",
+            : "Перевод",
         ),
         element(
           "div",
-          partial || r.text || pendingTranslationText(studioState.job),
+          partial ||
+            (r.text !== r.source || r.status === "preserved" ? r.text : "") ||
+            pendingTranslationText(studioState.job),
         ),
       );
     else
@@ -243,6 +294,7 @@ async function refreshState(initial = false) {
     $("live").scrollTop = top;
     liveVersion = lv;
   }
+  $("live").hidden = !r;
   const log = studioState.job
     ? await request("job-log?id=" + studioState.job.id)
     : { text: "" };
@@ -504,8 +556,31 @@ async function start(stage, retry = false) {
   toast("Задача запущена · прогресс и журнал справа");
 }
 $("newProject").onclick = () => {
+  $("chooseProjectFolder").hidden =
+    !window.pywebview?.api?.choose_project_folder;
   $("projectDialog").showModal();
 };
+$("chooseProjectFolder").onclick = guard(async () => {
+  const selected = studioState.snapshot?.projects.find(
+    (p) => p.id === studioState.project,
+  );
+  const path = await window.pywebview.api.choose_project_folder(
+    $("rootPath").value || selected?.root || "",
+  );
+  if (path) {
+    $("rootPath").value = path;
+    $("openProject").focus();
+  }
+});
+$("activeProjectJob").onclick = guard(async () => {
+  const target = Number($("activeProjectJob").dataset.project);
+  if (target !== studioState.project) {
+    $("projects").value = target;
+    await $("projects").onchange();
+  }
+  if (studioState.project === target)
+    document.querySelector(".right").scrollTop = 0;
+});
 $("openProject").onclick = guard(async () => {
   studioLifecycle.notify("projectNavigation");
   let r = await request("project", {
@@ -694,10 +769,6 @@ window.addEventListener(
   "DOMContentLoaded",
   guard(async () => {
     await refresh(true);
-    let m = await request("models");
-    studioLifecycle.notify("localModels", m);
-    if (m.models.length)
-      applyModelList(m.model_details || m.models.map((name) => ({ name })));
     setInterval(async () => {
       if (
         studioState.busy ||
@@ -708,13 +779,20 @@ window.addEventListener(
       studioState.busy = true;
       try {
         await refresh();
+        $("connection").hidden = true;
       } catch (e) {
-        $("connection").textContent =
-          "Сервер недоступен; перезапустите приложение";
+        setText("connection", "Сервер приложения недоступен");
+        $("connection").hidden = false;
       } finally {
         studioState.busy = false;
       }
     }, 2500);
+    const inventory = await request("models");
+    studioLifecycle.notify("localModels", inventory);
+    if (inventory.models.length)
+      applyModelList(
+        inventory.model_details || inventory.models.map((name) => ({ name })),
+      );
   }),
 );
 async function refresh(initial = false) {

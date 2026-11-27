@@ -99,6 +99,18 @@ def state(store, project, editing=False):
                 "SELECT p.*,EXISTS(SELECT 1 FROM jobs j WHERE j.project=p.id AND j.state IN ('running','queued')) active FROM projects p WHERE p.hidden=0 AND p.deleting=0 ORDER BY p.id"
             )
         ]
+        activity = [
+            dict(r)
+            for r in db.execute(
+                """SELECT j.id,j.project,p.name,j.stage,j.state,j.provider,j.done,j.total,
+                   CASE j.provider WHEN 'cloud' THEN json_extract(j.settings,'$.cloud_model')
+                   WHEN 'mcp' THEN json_extract(j.settings,'$.mcp_model_hint')
+                   ELSE json_extract(j.settings,'$.model') END model
+                   FROM jobs j JOIN projects p ON p.id=j.project
+                   WHERE p.hidden=0 AND p.deleting=0 AND j.state IN ('running','queued','paused')
+                   ORDER BY CASE j.state WHEN 'running' THEN 0 WHEN 'queued' THEN 1 ELSE 2 END,j.id"""
+            )
+        ]
         if project not in {p["id"] for p in projects}:
             project = projects[0]["id"] if projects else 0
         if not project:
@@ -107,6 +119,7 @@ def state(store, project, editing=False):
                 "files": [],
                 "counts": {},
                 "jobs": [],
+                "activity": activity,
                 "project": None,
             }
         files = [
@@ -149,6 +162,7 @@ def state(store, project, editing=False):
         "files": files,
         "counts": counts,
         "jobs": jobs,
+        "activity": activity,
         "errors": errors,
         "repairable_errors": repairable_errors,
         "pending": pending,

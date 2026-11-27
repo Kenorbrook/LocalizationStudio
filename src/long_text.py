@@ -160,6 +160,7 @@ def process(provider, stage, entry, direct):
         for k in (
             "model",
             "cloud_model",
+            "cloud_connection",
             "endpoint",
             "mcp_session",
             "mcp_model_hint",

@@ -65,6 +65,9 @@ def settings(store, data):
         )
     if "speaker_profiles" in old:
         settings["speaker_profiles"] = old["speaker_profiles"]
+    from cloud_connections import preserve_legacy
+
+    preserve_legacy(old, settings, replacing=bool(key))
     if key:
         secret(pid, key)
     with store.db() as db:

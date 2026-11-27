@@ -129,21 +129,7 @@ for (const [id, title, destination] of [
   );
   supportActions.append(link);
 }
-appAbout.append(
-  aboutHeading,
-  aboutVersion,
-  element(
-    "p",
-    "Мастерская перевода игр. Локальный перевод работает без интернета.",
-    "sub",
-  ),
-  supportActions,
-  element(
-    "p",
-    "Ссылки откроются в вашем браузере. Для GitHub нужен интернет.",
-    "sub",
-  ),
-);
+appAbout.append(aboutHeading, aboutVersion, supportActions);
 updatesBody.append(appAbout);
 let updateState = null;
 function displayUpdateState(state) {

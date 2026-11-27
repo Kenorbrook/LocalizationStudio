@@ -21,6 +21,7 @@ def resume_settings(old, new):
     for key in [
         "model",
         "cloud_model",
+        "cloud_connection",
         "endpoint",
         "source_language",
         "target_language",

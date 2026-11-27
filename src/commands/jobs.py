@@ -58,6 +58,9 @@ def job(store, data):
             db.execute("SELECT settings FROM projects WHERE id=?", (pid,)).fetchone()[0]
         )
     settings = validate_job_settings(store, pid, data["provider"], dict(settings), old)
+    from cloud_connections import preserve_legacy
+
+    preserve_legacy(old, settings)
     if data["stage"] == "analyze" and data["provider"] == "mcp":
         raise ValueError("Для анализа выберите локальную модель или облачный API")
     analysis_job = None
@@ -178,14 +181,15 @@ def control(store, data):
                         "SELECT settings FROM projects WHERE id=?", (job["project"],)
                     ).fetchone()[0]
                 )
-                saved.update(
-                    {
-                        k: v
-                        for k, v in settings.items()
-                        if not k.startswith("_")
-                        and k not in {"run_lines", "run_minutes"}
-                    }
-                )
+                from cloud_connections import preserve_legacy
+
+                updated = {
+                    k: v
+                    for k, v in settings.items()
+                    if not k.startswith("_") and k not in {"run_lines", "run_minutes"}
+                }
+                preserve_legacy(saved, updated)
+                saved.update(updated)
                 db.execute(
                     "UPDATE projects SET settings=? WHERE id=?",
                     (dump(saved), job["project"]),

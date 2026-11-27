@@ -6,6 +6,7 @@ import time
 def initialize(db):
     db.executescript("""
     CREATE TABLE IF NOT EXISTS projects(id INTEGER PRIMARY KEY,name TEXT,root TEXT UNIQUE,settings TEXT NOT NULL DEFAULT '{}');
+    CREATE TABLE IF NOT EXISTS cloud_connections(id TEXT PRIMARY KEY,name TEXT NOT NULL,endpoint TEXT NOT NULL,projects TEXT NOT NULL,models TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS files(id INTEGER PRIMARY KEY,project INTEGER,path TEXT,kind TEXT,hash TEXT,original TEXT,UNIQUE(project,path));
     CREATE TABLE IF NOT EXISTS records(id INTEGER PRIMARY KEY,file INTEGER,position INTEGER,source TEXT,text TEXT DEFAULT '',speaker TEXT,scene TEXT,locator TEXT,status TEXT DEFAULT 'empty',revision INTEGER DEFAULT 0,manual INTEGER DEFAULT 0,reviewer TEXT DEFAULT '',UNIQUE(file,position,source));
     CREATE INDEX IF NOT EXISTS records_file ON records(file,position);

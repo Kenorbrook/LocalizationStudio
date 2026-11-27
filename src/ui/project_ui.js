@@ -48,14 +48,9 @@ let activityVersion = "",
 const localConnection = (() => {
   let pending = false;
   function show(value) {
-    setText(
-      $("connection"),
-      value.online
-        ? "● Ollama подключена · без VPN"
-        : "Ollama недоступна · импорт и правки работают",
-    );
-    $("connection").title =
-      "Последняя проверка: " + new Date().toLocaleTimeString("ru");
+    const connection = $("connection");
+    connection.hidden = true;
+    connection.dataset.ollama = value.online ? "online" : "offline";
   }
   async function refresh() {
     if (pending) return;
@@ -491,7 +486,11 @@ function updateTaskActions() {
       );
   const provider = active ? studioState.job.provider : $("provider").value;
   const model =
-    provider === "cloud" ? currentSettings.cloud_model : currentSettings.model;
+    provider === "cloud"
+      ? currentSettings.cloud_model
+      : provider === "mcp"
+        ? currentSettings.mcp_model_hint
+        : currentSettings.model;
   activeSettings.dataset.fullDescription =
     (active ? "Текущая задача: " : "Новый запуск: ") +
     (model || "модель не выбрана") +

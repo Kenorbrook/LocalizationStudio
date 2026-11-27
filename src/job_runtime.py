@@ -3,7 +3,6 @@
 import json, math, subprocess, sys, time, threading, uuid
 from pathlib import Path
 from core import APP_HOME, ROOT
-from providers import secret
 
 
 def run_limits(settings):
@@ -130,8 +129,10 @@ def validate_job_settings(store, pid, provider, settings, old):
                 "Выбранный MCP-клиент не подключён или не поддерживает генерацию (sampling)"
             )
     if provider == "cloud":
-        if not secret(pid):
-            raise ValueError("Сначала сохраните API-ключ")
         if not settings.get("endpoint") or not settings.get("cloud_model"):
             raise ValueError("Задайте API URL и облачную модель")
+        from cloud_connections import job_key
+
+        if not job_key(store.path, pid, settings):
+            raise ValueError("Сначала сохраните API-ключ")
     return settings

@@ -21,6 +21,53 @@ class DesktopApi(CloseApi):
             else None
         )
 
+    def choose_project_folder(self, current=""):
+        from pathlib import Path
+        from webview import FileDialog
+
+        suggested = Path(current.strip()) if current.strip() else Path.home()
+        directory = next(
+            (str(path) for path in (suggested, *suggested.parents) if path.is_dir()),
+            str(Path.home()),
+        )
+        paths = self._controller.window.create_file_dialog(
+            FileDialog.FOLDER, directory=directory, allow_multiple=False
+        )
+        return (paths if isinstance(paths, str) else paths[0]) if paths else None
+
+    def cloud_connections(self):
+        from cloud_connections import listing
+
+        return listing(self._store)
+
+    def save_cloud_connection(self, values):
+        from cloud_connections import save
+
+        return save(self._store, values)
+
+    def discover_cloud_models(self, identity):
+        from cloud_connections import discover
+
+        return discover(self._store, identity)
+
+    def copy_cloud_key(self, identity):
+        from cloud_connections import connection, credential
+        from System.Windows.Forms import Clipboard
+
+        connection(self._store, identity)
+        key = credential(identity)
+        if not key:
+            raise ValueError("Ключ подключения недоступен")
+        self._controller.ui(lambda: Clipboard.SetText(key))
+        return True
+
+    def clipboard_text(self):
+        from System.Windows.Forms import Clipboard
+
+        result = []
+        self._controller.ui(lambda: result.append(str(Clipboard.GetText())))
+        return result[0]
+
     def get_plugins(self):
         return self._plugins.snapshot()
 

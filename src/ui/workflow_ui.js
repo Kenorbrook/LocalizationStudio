@@ -214,7 +214,10 @@ studioLifecycle.register(
       progress.fraction === null ||
       !studioState.job.run_started;
     runLimitProgress.value = Math.min(1, Math.max(0, progress.fraction || 0));
-    runLimitText.hidden = !studioState.job || !studioState.job.run_started;
+    runLimitText.hidden =
+      !studioState.job ||
+      !studioState.job.run_started ||
+      progress.fraction === null;
   },
 );
 // Only the body scrolls; title and close controls stay visible in every info dialog.
@@ -468,6 +471,7 @@ taskCard.append(
   taskHeading,
   $("progress"),
   $("progressText"),
+  $("progressError"),
   runLimitText,
   runLimitProgress,
   activeSettings,
@@ -497,7 +501,7 @@ sidebarStyle.textContent = `
 #taskCard #progress{display:block;width:100%;margin:14px 0 9px}
 #taskCard #progressText{font-variant-numeric:tabular-nums}
 #taskCard #activeSettings{margin:8px 0 14px;overflow-wrap:anywhere}
-#taskCard #live{margin:0 0 16px;background:#111b20;min-height:170px;max-height:300px;overflow:auto}
+#taskCard #live{margin:0 0 16px;background:#111b20;max-height:240px;overflow:auto}
 #taskCard #mainAction{margin:0;width:100%}
 #taskCard #actionHint{margin:8px 0 14px}
 #taskCard>details{margin:0;padding:12px 0;border-top:1px solid #34434b}

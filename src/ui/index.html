@@ -13,7 +13,8 @@
       Localization Studio<small>МАСТЕРСКАЯ ПЕРЕВОДА ИГР</small>
     </div>
     <div class="flex">
-      <span id="connection" class="sub">Локальный режим</span
+      <button id="activeProjectJob" class="header-job" hidden></button>
+      <span id="connection" class="sub" hidden></span
       ><button id="newProject">+ Открыть проект</button
       ><button id="errorsButton">Ошибки · 0</button>
     </div>
@@ -75,11 +76,12 @@
     </section>
     <aside class="right">
       <div class="flex">
-        <strong class="grow">Очередь обработки</strong
+        <strong class="grow" id="taskStage">Перевод</strong
         ><span class="badge" id="jobState">Нет задачи</span>
       </div>
       <progress id="progress" value="0" max="1"></progress>
       <div class="sub" id="progressText">Готово к работе</div>
+      <div id="progressError" class="sub" hidden></div>
       <div id="live" class="live">
         <label>СЕЙЧАС В РАБОТЕ</label>Здесь будут оригинал и результат текущей
         строки.
@@ -151,19 +153,18 @@
   </main>
   <dialog id="projectDialog">
     <h1>Открыть проект</h1>
-    <p class="sub">
-      Путь к папке одной игры. Определим движок и расположение текста без
-      интернета. Доступные сценарии Ren’Py соберём автоматически; для остальных
-      форматов покажем отчёт. Архивы не распаковываются.
-    </p>
-    <input id="rootPath" placeholder="A:\Games\MyGame" /><label class="sub"
+    <label for="rootPath">Папка игры</label>
+    <div class="project-path">
+      <input id="rootPath" placeholder="Путь к папке" />
+      <button id="chooseProjectFolder">Выбрать папку…</button>
+    </div>
+    <label class="sub"
       ><input id="scan" type="checkbox" style="width: auto" /> Также
       импортировать TXT и подтверждённые корпуса source / translation в
       корне</label
     >
     <div class="flex">
-      <button id="openProject" class="primary">
-        Открыть и определить движок</button
+      <button id="openProject" class="primary">Открыть</button
       ><button data-close>Закрыть</button>
     </div>
   </dialog>
@@ -219,6 +220,8 @@
   <script src="/updates_ui.js"></script>
   <script src="/knowledge_ui.js"></script>
   <script src="/workspace_ui.js"></script>
+  <script src="/cloud_ui.js"></script>
+  <script src="/text_menu.js"></script>
   <script src="/plugins_ui.js"></script>
   <script src="/recovery_ui.js"></script>
   <script src="/plugin_host.js"></script>
