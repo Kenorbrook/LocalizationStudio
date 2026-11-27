@@ -78,6 +78,8 @@ def adjustment(settings, message):
 
 
 def plan(store, project, job_id=None):
+    from error_catalog import VISIBLE
+
     with store.db() as db:
         if job_id is None:
             row = db.execute(
@@ -104,7 +106,9 @@ def plan(store, project, job_id=None):
         ):
             return result
         errors = db.execute(
-            "SELECT e.id,e.record,e.message,r.revision,r.source FROM errors e JOIN records r ON r.id=e.record JOIN files f ON f.id=r.file WHERE e.job=? AND e.project=? AND f.project=? AND e.resolved=0 AND r.manual=0 AND r.status='empty' AND e.id=(SELECT max(id) FROM errors WHERE record=e.record AND job=e.job AND resolved=0) ORDER BY e.id LIMIT 200",
+            "SELECT e.id,e.record,e.message,r.revision,r.source FROM errors e JOIN records r ON r.id=e.record JOIN files f ON f.id=r.file WHERE e.job=? AND e.project=? AND f.project=? AND e.resolved=0 AND r.manual=0 AND r.status='empty' AND e.id=(SELECT max(id) FROM errors WHERE record=e.record AND job=e.job AND resolved=0) AND "
+            + VISIBLE
+            + " ORDER BY e.id LIMIT 200",
             (job_id, project, project),
         ).fetchall()
         for error in errors:
@@ -132,6 +136,7 @@ def apply(store, project, job_id=None, automatic=False):
     from contextlib import nullcontext
     from job_chain import schedule
     from job_runtime import validate_job_settings
+    from error_catalog import mark_retry, VISIBLE
 
     with getattr(store, "launch_lock", nullcontext()):
         if getattr(store, "closing", False):
@@ -197,7 +202,8 @@ def apply(store, project, job_id=None, automatic=False):
                     row
                     for row in rows
                     if db.execute(
-                        "SELECT 1 FROM records r JOIN files f ON f.id=r.file JOIN errors e ON e.record=r.id WHERE r.id=? AND r.revision=? AND r.manual=0 AND r.status='empty' AND f.project=? AND e.id=? AND e.resolved=0",
+                        "SELECT 1 FROM records r JOIN files f ON f.id=r.file JOIN errors e ON e.record=r.id WHERE r.id=? AND r.revision=? AND r.manual=0 AND r.status='empty' AND f.project=? AND e.id=? AND e.resolved=0 AND "
+                        + VISIBLE,
                         (row["record"], row["revision"], project, row["error"]),
                     ).fetchone()
                 ]
@@ -212,6 +218,8 @@ def apply(store, project, job_id=None, automatic=False):
                     "INSERT INTO queue(job,record) VALUES (?,?)",
                     [(jid, row["record"]) for row in valid],
                 )
+                for row in valid:
+                    mark_retry(db, project, jid, row["record"])
                 db.executemany(
                     "INSERT INTO recovery_jobs(parent,record,job,reason) VALUES (?,?,?,?)",
                     [

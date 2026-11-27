@@ -5,6 +5,8 @@ from core import dump
 
 
 def candidates(store, pid, stage, rid=None):
+    from error_catalog import VISIBLE
+
     if stage not in {"translate", "review", "cloud"}:
         raise ValueError("Некорректный этап")
     statuses = {
@@ -12,7 +14,10 @@ def candidates(store, pid, stage, rid=None):
         "review": "('translated')",
         "cloud": "('translated','edited')",
     }[stage]
-    query = f"SELECT DISTINCT r.id,e.job FROM errors e JOIN jobs j ON j.id=e.job JOIN records r ON r.id=e.record JOIN files f ON f.id=r.file WHERE e.project=? AND f.project=? AND j.stage=? AND e.resolved=0 AND r.manual=0 AND r.status IN {statuses}"
+    query = (
+        f"SELECT DISTINCT r.id,e.job FROM errors e JOIN jobs j ON j.id=e.job JOIN records r ON r.id=e.record JOIN files f ON f.id=r.file WHERE e.project=? AND f.project=? AND j.stage=? AND e.resolved=0 AND r.manual=0 AND r.status IN {statuses} AND "
+        + VISIBLE
+    )
     args = [pid, pid, stage]
     if rid:
         query += " AND r.id=?"
@@ -158,7 +163,7 @@ def enqueue_repair(store, pid, rid=None):
     from job_runtime import validate_job_settings
 
     with store.db() as db:
-        rows = repair_candidates(db, pid, rid)
+        rows = repair_candidates(db, pid, rid, include_queued=True)
         if not rows:
             raise ValueError("Нет подходящих локальных ошибок смешения букв")
         pending = {}
@@ -174,10 +179,17 @@ def enqueue_repair(store, pid, rid=None):
             ):
                 if str(record[0]) in repairs:
                     pending[record[0]] = job["id"]
-        fresh = [r for r in rows if r["record"] not in pending]
+        fresh = [
+            r for r in repair_candidates(db, pid, rid) if r["record"] not in pending
+        ]
         if not fresh:
+            existing = next(
+                (pending[r["record"]] for r in rows if r["record"] in pending), None
+            )
+            if existing is None:
+                raise ValueError("Строки уже поставлены на повтор")
             return {
-                "job": pending[rows[0]["record"]],
+                "job": existing,
                 "records": 0,
                 "queued": True,
                 "already_queued": True,

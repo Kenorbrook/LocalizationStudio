@@ -7,15 +7,32 @@ LATEST = """e.project=? AND e.resolved=0 AND (
         SELECT max(newer.id) FROM errors newer
         WHERE newer.project=e.project AND newer.record=e.record AND newer.resolved=0
     ))"""
+VISIBLE = """NOT EXISTS (
+    SELECT 1 FROM queue retry JOIN jobs retry_job ON retry_job.id=retry.job
+    WHERE retry.record=e.record AND retry_job.project=e.project
+    AND retry.state='pending' AND retry.retry_through_error>0
+    AND retry.retry_through_error>=e.id
+    AND retry_job.state IN ('waiting','queued','running','paused','held')
+)"""
+
+
+def mark_retry(db, project, job, record):
+    """Remember which failures this attempt is intended to replace."""
+    db.execute(
+        "UPDATE queue SET retry_through_error=coalesce(("
+        "SELECT max(id) FROM errors WHERE project=? AND record=? AND resolved=0"
+        "),0) WHERE job=? AND record=?",
+        (project, record, job, record),
+    )
 
 
 def count(db, project):
     return db.execute(
-        "SELECT count(*) FROM errors e WHERE " + LATEST, (project,)
+        "SELECT count(*) FROM errors e WHERE " + LATEST + " AND " + VISIBLE, (project,)
     ).fetchone()[0]
 
 
-def repair_candidates(db, project, record=None):
+def repair_candidates(db, project, record=None, include_queued=False):
     query = (
         "SELECT e.*,j.settings retry_settings,j.provider retry_provider,j.stage "
         "FROM errors e JOIN jobs j ON j.id=e.job JOIN records r ON r.id=e.record "
@@ -25,6 +42,8 @@ def repair_candidates(db, project, record=None):
         "AND r.status='empty' AND r.manual=0 AND e.message LIKE ?"
     )
     args = [project, MIXED_SCRIPT_PREFIX + "%"]
+    if not include_queued:
+        query += " AND " + VISIBLE
     if record is not None:
         query += " AND e.record=?"
         args.append(int(record))
@@ -41,6 +60,8 @@ def page(store, project, offset=0):
                 "FROM errors e LEFT JOIN records r ON r.id=e.record "
                 "LEFT JOIN files f ON f.id=r.file LEFT JOIN jobs j ON j.id=e.job WHERE "
                 + LATEST
+                + " AND "
+                + VISIBLE
                 + " ORDER BY e.id DESC LIMIT 100 OFFSET ?",
                 (project, max(0, offset)),
             )

@@ -77,7 +77,13 @@ class JobsRepository:
                 else "('translated','edited')" if stage == "cloud" else "('translated')"
             )
         if retry:
-            query += " AND EXISTS(SELECT 1 FROM errors e WHERE e.record=r.id AND e.resolved=0)"
+            from error_catalog import VISIBLE
+
+            query += (
+                " AND EXISTS(SELECT 1 FROM errors e WHERE e.record=r.id AND e.project=f.project AND e.resolved=0 AND "
+                + VISIBLE
+                + ")"
+            )
         with self.database.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             if not db.execute(
@@ -113,6 +119,11 @@ class JobsRepository:
             db.executemany(
                 "INSERT INTO queue(job,record) VALUES (?,?)", [(jid, r) for r in ids]
             )
+            if retry:
+                from error_catalog import mark_retry
+
+                for rid in ids:
+                    mark_retry(db, project, jid, rid)
             return jid
 
     def error(self, job, record, message, candidate=""):

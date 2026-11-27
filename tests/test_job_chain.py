@@ -31,10 +31,10 @@ class JobChainTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def retry(self, custom=False):
+    def retry(self, custom=False, record=1):
         data = {
             "project": self.pid,
-            "record": 1,
+            "record": record,
             "stage": "translate",
             "mode": "original",
             "settings": {"context": 32768},
@@ -176,7 +176,10 @@ class JobChainTests(unittest.TestCase):
 
     def test_fifo_and_paused_chain(self):
         one = self.retry()
-        two = self.retry(True)
+        with self.assertRaisesRegex(ValueError, "Нет подходящих ошибок"):
+            self.retry(True)
+        self.store.error(self.jid, 2, "context")
+        two = self.retry(True, record=2)
         with self.store.db() as db:
             db.execute("UPDATE jobs SET state='paused' WHERE id=?", (self.jid,))
         with patch("job_runtime.launch") as launch:

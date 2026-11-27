@@ -34,6 +34,8 @@ def resume_settings(old, new):
 
 
 def requeue(db, job, ids):
+    from error_catalog import mark_retry
+
     ids = list(set(map(int, ids)))
     changed = 0
     added = 0
@@ -59,6 +61,7 @@ def requeue(db, job, ids):
                 (job["id"], rid),
             )
             changed += 1
+        mark_retry(db, job["project"], job["id"], rid)
     db.execute(
         "UPDATE jobs SET done=max(0,done-?),total=total+? WHERE id=?",
         (changed, added, job["id"]),
@@ -66,6 +69,8 @@ def requeue(db, job, ids):
 
 
 def retry_errors(store, data, dispatch):
+    from error_catalog import VISIBLE
+
     pid = int(data["project"])
     stage = data["stage"]
     custom = data.get("overrides")
@@ -76,7 +81,11 @@ def retry_errors(store, data, dispatch):
     if stage not in {"translate", "review", "cloud"}:
         raise ValueError("Некорректный этап")
     with store.db() as db:
-        query = "SELECT DISTINCT e.record FROM errors e JOIN jobs j ON j.id=e.job JOIN records r ON r.id=e.record JOIN files f ON f.id=r.file WHERE e.project=? AND f.project=? AND j.stage=? AND e.resolved=0 AND r.manual=0 AND r.status<>'preserved'"
+        query = (
+            "SELECT DISTINCT e.record FROM errors e JOIN jobs j ON j.id=e.job JOIN records r ON r.id=e.record "
+            "JOIN files f ON f.id=r.file WHERE e.project=? AND f.project=? AND j.stage=? "
+            "AND e.resolved=0 AND r.manual=0 AND r.status<>'preserved' AND " + VISIBLE
+        )
         args = [pid, pid, stage]
         if data.get("record"):
             query += " AND e.record=?"

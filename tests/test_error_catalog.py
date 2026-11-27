@@ -114,6 +114,49 @@ class ErrorCatalogTests(unittest.TestCase):
                 [r[0] for r in db.execute("select resolved from errors")], [1, 1, 1]
             )
 
+    def test_queued_original_retry_hides_card_and_cancel_restores_it(self):
+        from commands.jobs import control
+        from job_chain import plan
+
+        self.errors()
+        retry = enqueue_retry(
+            self.store,
+            {"project": self.project, "record": 1, "stage": "translate"},
+        )["job"]
+        self.assertEqual(page(self.store, self.project), [])
+        self.assertEqual(state(self.store, self.project)["errors"], 0)
+        self.assertEqual(plan(self.store, self.project)["translate"], 0)
+        control(self.store, {"id": retry, "mode": "cancel"})
+        self.assertEqual(page(self.store, self.project)[0]["attempt_count"], 3)
+
+    def test_fresh_failure_of_same_job_is_visible_even_while_paused(self):
+        from error_workflow import requeue
+
+        self.errors()
+        with self.store.db() as db:
+            db.execute("UPDATE jobs SET state='paused' WHERE id=?", (self.job,))
+            job = db.execute("SELECT * FROM jobs WHERE id=?", (self.job,)).fetchone()
+            requeue(db, job, [1])
+        self.assertEqual(page(self.store, self.project), [])
+        self.store.error(self.job, 1, "Повтор снова не удался")
+        card = page(self.store, self.project)[0]
+        self.assertEqual(card["message"], "Повтор снова не удался")
+        self.assertEqual(card["attempt_count"], 4)
+
+    def test_migration_hides_an_already_waiting_retry(self):
+        self.errors()
+        retry = enqueue_retry(
+            self.store,
+            {"project": self.project, "record": 1, "stage": "translate"},
+        )["job"]
+        with self.store.db() as db:
+            db.execute("DROP INDEX queue_pending_retries")
+            db.execute("ALTER TABLE queue DROP COLUMN retry_through_error")
+        self.store = Store(self.store.path)
+        self.assertEqual(page(self.store, self.project), [])
+        self.store.error(retry, 1, "Не удалось выполнить повтор")
+        self.assertEqual(page(self.store, self.project)[0]["attempt_count"], 4)
+
     def test_manual_error_cannot_confirm_the_unchanged_invalid_draft(self):
         from commands.records import manual_error
 

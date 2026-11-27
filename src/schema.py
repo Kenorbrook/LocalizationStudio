@@ -111,6 +111,29 @@ def initialize(db):
             )
     if "priority" not in {r[1] for r in db.execute("PRAGMA table_info(queue)")}:
         db.execute("ALTER TABLE queue ADD COLUMN priority INTEGER DEFAULT 0")
+    if "retry_through_error" not in {
+        r[1] for r in db.execute("PRAGMA table_info(queue)")
+    }:
+        db.execute(
+            "ALTER TABLE queue ADD COLUMN retry_through_error INTEGER NOT NULL DEFAULT 0"
+        )
+        # Existing retries keep their original failures hidden, but a failure
+        # already reported by the retry itself stays visible.
+        db.execute("""
+            UPDATE queue SET retry_through_error=coalesce((
+                SELECT max(e.id) FROM jobs j JOIN errors e ON e.project=j.project
+                WHERE j.id=queue.job AND e.record=queue.record
+                AND e.job<j.id AND e.at<=j.created AND e.resolved=0
+            ),0)
+            WHERE state='pending' AND job IN (
+                SELECT id FROM jobs WHERE state IN ('waiting','queued','running','paused','held')
+                AND json_extract(settings,'$._retry_origin') IS NOT NULL
+            )
+        """)
+    db.execute(
+        "CREATE INDEX IF NOT EXISTS queue_pending_retries ON queue(record,retry_through_error,job) "
+        "WHERE state='pending' AND retry_through_error>0"
+    )
     if "at" not in {r[1] for r in db.execute("PRAGMA table_info(preserved_records)")}:
         db.execute("ALTER TABLE preserved_records ADD COLUMN at REAL DEFAULT 0")
         db.execute(
