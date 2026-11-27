@@ -62,17 +62,29 @@ def record_context(store, rid, radius=10):
 
 
 def job_log(store, jid):
+    from project_workspace import lookup, inside
+
     with store.db() as db:
         job = db.execute(
-            "SELECT j.id,p.root FROM jobs j JOIN projects p ON p.id=j.project WHERE j.id=?",
+            "SELECT j.id,j.project,p.root FROM jobs j JOIN projects p ON p.id=j.project WHERE j.id=?",
             (jid,),
         ).fetchone()
     if not job:
         raise ValueError("Задача не найдена")
-    path = Path(job["root"]) / "translation_tools" / "studio" / f"job-{jid}.log"
-    if not path.exists():
-        path = store.path.parent / "worker-logs" / f"job-{jid}-process.log"
-    if not path.exists():
+    folder = lookup(store, job["project"])
+    candidates = (
+        [inside(folder, f"job-{jid}.log"), inside(folder, f"job-{jid}-process.log")]
+        if folder
+        else []
+    )
+    candidates.extend(
+        [
+            Path(job["root"]) / "translation_tools" / "studio" / f"job-{jid}.log",
+            store.path.parent / "worker-logs" / f"job-{jid}-process.log",
+        ]
+    )
+    path = next((candidate for candidate in candidates if candidate.is_file()), None)
+    if path is None:
         return {"text": ""}
     with path.open("rb") as stream:
         size = stream.seek(0, 2)

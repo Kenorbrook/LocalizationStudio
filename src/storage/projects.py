@@ -6,34 +6,36 @@ class ProjectsRepository:
     def __init__(self, database):
         self.database = database
 
-    def project(self, root):
+    def project(self, root, with_status=False):
         p = Path(root).resolve()
         if not p.is_dir():
             raise ValueError("Папка проекта не найдена")
         with self.database.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
             existing = db.execute(
                 "SELECT * FROM projects WHERE root=? COLLATE NOCASE", (str(p),)
             ).fetchone()
             if existing:
                 if existing["deleting"]:
                     raise ValueError("Сначала завершите удаление проекта")
-                db.execute(
-                    "UPDATE projects SET hidden=0,completed=0,keep_visible=1 WHERE id=?",
-                    (existing["id"],),
-                )
-                return dict(
+                project = dict(existing)
+                status = "restored" if existing["hidden"] else "existing"
+                if status == "restored":
                     db.execute(
-                        "SELECT * FROM projects WHERE id=?", (existing["id"],)
-                    ).fetchone()
-                )
+                        "UPDATE projects SET hidden=0,completed=0,keep_visible=1 WHERE id=?",
+                        (existing["id"],),
+                    )
+                    project.update(hidden=0, completed=0, keep_visible=1)
+                return (project, status) if with_status else project
             pid = self.database.next_id(db, "projects")
             db.execute(
                 "INSERT OR IGNORE INTO projects(id,name,root) VALUES (?,?,?)",
                 (pid, p.name, str(p)),
             )
-            return dict(
+            project = dict(
                 db.execute("SELECT * FROM projects WHERE root=?", (str(p),)).fetchone()
             )
+            return (project, "created") if with_status else project
 
     def hide_project(self, pid, hidden=True):
         with self.database.connect() as db:

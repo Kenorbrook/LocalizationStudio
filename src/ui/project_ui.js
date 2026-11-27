@@ -656,19 +656,10 @@ loadSettings = function (p) {
 const archiveMenu = element("dialog");
 archiveMenu.id = "projectManager";
 archiveMenu.setAttribute("aria-labelledby", "projectManagerTitle");
-const hideProject = element("button", "Скрыть проект в списке");
+const hideProject = element("button", "Архивировать выбранный проект");
 hideProject.id = "hideProject";
-const hiddenProjects = element("button", "Скрытые проекты");
+const hiddenProjects = element("button", "Открыть архив проектов");
 hiddenProjects.id = "hiddenProjects";
-archiveMenu.append(
-  hideProject,
-  hiddenProjects,
-  element(
-    "p",
-    "Переводы, правки, настройки и очередь остаются в базе. Повторное открытие той же папки вернёт проект. Работающая задача продолжит выполняться.",
-    "sub",
-  ),
-);
 document.body.append(archiveMenu);
 async function selectRestoredProject(pid) {
   studioState.project = pid;
@@ -682,14 +673,18 @@ async function selectRestoredProject(pid) {
 hideProject.onclick = guard(async () => {
   if (!studioState.project) throw Error("Нет выбранного проекта");
   if (studioState.dirty.size)
-    throw Error("Сохраните или отмените правки перед скрытием");
+    throw Error("Сохраните или отмените правки перед архивированием");
   await request("hide-project", { project: studioState.project });
   await selectRestoredProject(0);
-  toast("Проект скрыт; весь прогресс сохранён");
+  toast("Проект архивирован");
 });
 hiddenProjects.onclick = guard(async () => {
-  const list = await request("hidden-projects");
-  $("infoTitle").textContent = "Скрытые проекты · данные сохранены";
+  const lists = await Promise.all([
+    request("hidden-projects"),
+    request("completed-projects"),
+  ]);
+  const list = lists.flat().sort((a, b) => a.name.localeCompare(b.name, "ru"));
+  $("infoTitle").textContent = "Архив проектов";
   $("infoContent").replaceChildren();
   for (const p of list) {
     const card = element("div", undefined, "error");
@@ -714,15 +709,16 @@ hiddenProjects.onclick = guard(async () => {
             ? " · удаление не завершено"
             : p.active
               ? " · задача работает"
-              : ""),
+              : p.completed
+                ? " · перевод завершён"
+                : ""),
       ),
       element("p", p.root, "sub"),
       restore,
     );
     $("infoContent").append(card);
   }
-  if (!list.length)
-    $("infoContent").append(element("p", "Скрытых проектов нет"));
+  if (!list.length) $("infoContent").append(element("p", "Архив пуст"));
   $("infoDialog").showModal();
 });
 studioLifecycle.register(
@@ -735,12 +731,9 @@ studioLifecycle.register(
 
 const completeProject = element("button", "Перенести в завершённые");
 completeProject.id = "completeProject";
-const completedProjects = element("button", "Завершённые проекты");
-completedProjects.id = "completedProjects";
 const deleteProject = element("button", "Удалить проект из программы");
 deleteProject.id = "deleteProject";
 deleteProject.style.color = "var(--red)";
-archiveMenu.append(completeProject, completedProjects, deleteProject);
 completeProject.onclick = guard(async () => {
   if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
   await request("complete-project", { project: studioState.project });
@@ -754,7 +747,7 @@ function confirmProjectDeletion(p) {
     element("p", p.root),
     element(
       "p",
-      "Задачи этого проекта будут остановлены. Переводы, ручные правки, история, пометки и настройки будут удалены из программы. Папка игры и её файлы останутся. Для сохранения прогресса используйте «Завершённые» или скрытие.",
+      "Приложение остановит задачи и удалит переводы, историю, настройки и свою скрытую папку .localization-studio. Файлы игры сохранятся. Чтобы оставить прогресс, архивируйте проект.",
     ),
     element("p", "После повторного добавления проект будет создан заново."),
   );
@@ -783,39 +776,6 @@ deleteProject.onclick = guard(async () => {
   if (!p) throw Error("Выберите проект");
   confirmProjectDeletion(p);
 });
-completedProjects.onclick = guard(async () => {
-  const list = await request("completed-projects");
-  $("infoTitle").textContent = "Завершённые проекты · перевод сохранён";
-  $("infoContent").replaceChildren(
-    element(
-      "p",
-      "Перевод всех строк завершён. Редактура и проверка могут ещё требоваться.",
-    ),
-  );
-  for (const p of list) {
-    const card = element("div", undefined, "error");
-    const restore = element("button", "Вернуть в активные");
-    restore.dataset.restoreCompleted = p.id;
-    restore.onclick = guard(async () => {
-      await request("restore-project", { project: p.id });
-      $("infoDialog").close();
-      await selectRestoredProject(p.id);
-    });
-    const remove = element("button", "Удалить из программы");
-    remove.onclick = guard(() => confirmProjectDeletion(p));
-    card.append(
-      element("strong", p.name),
-      element("p", p.root, "sub"),
-      restore,
-      remove,
-    );
-    $("infoContent").append(card);
-  }
-  if (!list.length)
-    $("infoContent").append(element("p", "Завершённых проектов нет"));
-  $("infoDialog").showModal();
-  $("infoContent").scrollTop = 0;
-});
 studioLifecycle.register(
   "refresh",
   "lifecycleRefresh",
@@ -840,7 +800,11 @@ studioLifecycle.register(
 const projectPicker = element("div", undefined, "project-picker");
 projectPicker.id = "projectPicker";
 $("projects").before(projectPicker);
-const manageProjects = element("button", "⋯");
+const manageProjects = element(
+  "button",
+  "Архив и управление проектами",
+  "ux-project-settings-button",
+);
 manageProjects.id = "projectArchiveMenu";
 manageProjects.title = "Управление проектами";
 manageProjects.setAttribute("aria-label", "Управление проектами");
@@ -883,7 +847,7 @@ managementGroup(
 managementGroup(
   "Другие проекты",
   "Вернуть сохранённый проект в активный список.",
-  [hiddenProjects, completedProjects],
+  [hiddenProjects],
 );
 managementGroup(
   "Удаление данных проекта",
@@ -903,7 +867,7 @@ manageProjects.onclick = () => {
   setText(managerName, selected?.name || "Проект не выбран");
   setText(
     managerPath,
-    selected?.root || "Можно открыть скрытые и завершённые проекты.",
+    selected?.root || "Можно восстановить проект из архива.",
   );
   archiveMenu.showModal();
   managerBody.scrollTop = 0;
@@ -913,7 +877,6 @@ for (const button of [
   hideProject,
   completeProject,
   hiddenProjects,
-  completedProjects,
   deleteProject,
 ]) {
   button.addEventListener("click", () => archiveMenu.close(), true);
@@ -923,7 +886,7 @@ style.textContent += `
 #projectPulse:empty{display:none}
 #projectPulse:not(:empty){margin:0 0 10px;overflow-wrap:anywhere}
 .project-picker #projects{margin-top:0!important;width:0;flex:1;min-width:0}
-#projectArchiveMenu{flex:0 0 36px;height:42px;padding:0;font-size:24px;line-height:1}
+#projectArchiveMenu{margin-top:-10px}
 #projectManager{width:560px;max-width:calc(100vw - 40px);padding:0;overflow:hidden}
 #projectManager[open]{display:flex;flex-direction:column;max-height:85vh}
 .project-manager-header{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:20px 24px;border-bottom:1px solid var(--line);flex-shrink:0}

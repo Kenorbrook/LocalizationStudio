@@ -190,9 +190,11 @@ class DetectionTests(unittest.TestCase):
         )
 
     def test_project_open_does_not_import_arbitrary_config_json(self):
-        self.file("config.json", '{"asset":"image.png","name":"Project"}')
-        self.file("corpus.json", '[{"source":"Hello"}]')
-        result = api(self.store, "project", {"root": str(self.root), "scan": True})
+        self.file("new/config.json", '{"asset":"image.png","name":"Project"}')
+        self.file("new/corpus.json", '[{"source":"Hello"}]')
+        result = api(
+            self.store, "project", {"root": str(self.root / "new"), "scan": True}
+        )
         self.assertEqual(result["import"]["added"], 1)
 
     def test_unreal_project_metadata(self):

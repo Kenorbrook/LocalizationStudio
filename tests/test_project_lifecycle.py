@@ -187,6 +187,44 @@ class LifecycleTests(unittest.TestCase):
         with patch("project_lifecycle.remove_secret"):
             delete_project(self.store, self.pid, lambda *_: False)
 
+    def test_archive_keeps_owned_workspace_and_delete_removes_only_that_folder(self):
+        import os
+        import stat
+        from app import api
+        from project_workspace import FOLDER
+
+        root = self.root / "first"
+        upload = api(
+            self.store,
+            "upload",
+            {
+                "project": self.pid,
+                "files": [
+                    {"name": "extra.json", "text": '[{"source":"An extra line."}]'}
+                ],
+            },
+        )
+        workspace = root / FOLDER
+        self.assertEqual(upload["added"], 1)
+        self.assertTrue((workspace / "imports" / "extra.json").exists())
+        if os.name == "nt":
+            self.assertTrue(
+                workspace.stat().st_file_attributes & stat.FILE_ATTRIBUTE_HIDDEN
+            )
+        self.store.hide_project(self.pid)
+        self.assertTrue(workspace.is_dir())
+        self.assertEqual(self.store.project(str(root))["id"], self.pid)
+        # A directory with the same name in another project is unrelated.
+        unrelated = self.root / "second" / FOLDER
+        unrelated.mkdir()
+        (unrelated / "note.txt").write_text("User data")
+        with patch("project_lifecycle.remove_secret"):
+            delete_project(self.store, self.pid, lambda *_: False)
+            delete_project(self.store, self.other, lambda *_: False)
+        self.assertFalse(workspace.exists())
+        self.assertTrue((root / "lines.json").is_file())
+        self.assertTrue((unrelated / "note.txt").is_file())
+
     def test_worker_identity_requires_exe_job_and_database(self):
         import sys
         from core import ROOT

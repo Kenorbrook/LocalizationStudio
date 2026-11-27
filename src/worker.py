@@ -1,13 +1,20 @@
 import json, os, threading, time
-from pathlib import Path
 from core import Store, now, dump
 from providers import Provider, ServiceUnavailable, process_record
 from speaker_context import context_entry
 from long_text import JobStopped
 from script_validation import ScriptRepairFailed
+from project_workspace import ensure, inside
 
 
 def run(store, jid, provider_factory=Provider):
+    with store.db() as db:
+        ready = db.execute(
+            "SELECT project FROM jobs WHERE id=? AND state='queued'", (jid,)
+        ).fetchone()
+    if not ready:
+        raise ValueError("Задача уже запущена или завершена")
+    log_path = inside(ensure(store, ready["project"]), f"job-{jid}.log")
     with store.db() as db:
         job = db.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
         if not job or job["state"] != "queued":
@@ -27,9 +34,7 @@ def run(store, jid, provider_factory=Provider):
     settings["_studio_db"] = str(store.path)
     settings["_studio_job"] = jid
     settings["_studio_project"] = job["project"]
-    logdir = Path(project["root"]) / "translation_tools" / "studio"
-    logdir.mkdir(parents=True, exist_ok=True)
-    log = (logdir / f"job-{jid}.log").open("a", encoding="utf-8")
+    log = log_path.open("a", encoding="utf-8")
     stop = threading.Event()
     started = time.monotonic()
     elapsed = 0

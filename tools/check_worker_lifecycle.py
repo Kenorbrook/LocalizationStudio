@@ -144,9 +144,12 @@ def main():
                     f"Fixture GUI exited before it was ready (code {gui.returncode})"
                 )
             try:
-                return json.loads(probe.read_text()).get("passed")
+                report = json.loads(probe.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 return False
+            if not report.get("passed"):
+                raise RuntimeError(f"Fixture GUI probe failed: {report}")
+            return True
 
         until(ready, 70)
         endpoint = json.loads(discovery_path(store.path).read_text())
@@ -258,6 +261,12 @@ def main():
         api("control", {"id": jid, "mode": "resume", "preserve_project_settings": True})
         respond(until(sampling))
         until(lambda: job()["state"] == "done" and not job()["worker_active"])
+        workspace = fixture / ".localization-studio"
+        checks["logs_stay_in_project_workspace"] = (
+            (workspace / f"job-{jid}.log").is_file()
+            and (workspace / f"job-{jid}-process.log").is_file()
+            and not (fixture / "worker-logs").exists()
+        )
         with store.db() as db:
             checks["saved_translation_unchanged"] = (
                 tuple(

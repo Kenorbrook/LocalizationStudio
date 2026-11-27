@@ -165,12 +165,16 @@ class RenPyPluginTests(unittest.TestCase):
                 output_path(self.source, link)
 
     def test_copy_ownership_cancellation_and_no_source_writes(self):
+        workspace = self.source / ".localization-studio"
+        workspace.mkdir()
+        (workspace / "job-1.log").write_text("fixture", encoding="utf-8")
         original = {
             p.relative_to(self.source): digest(p)
             for p in self.source.rglob("*")
             if p.is_file()
         }
         state = self.prepare()
+        self.assertFalse((self.root / "copy" / ".localization-studio").exists())
         self.assertEqual(
             original,
             {

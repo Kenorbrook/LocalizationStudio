@@ -20,11 +20,18 @@ def guard(path):
     return path
 
 
-def tree(root):
+def tree(root, skip_workspace=False):
     root = guard(root)
     pending = [root]
     while pending:
-        for entry in os.scandir(pending.pop()):
+        parent = pending.pop()
+        for entry in os.scandir(parent):
+            if (
+                skip_workspace
+                and parent == root
+                and entry.name.lower() == ".localization-studio"
+            ):
+                continue
             path = guard(Path(entry.path))
             if entry.is_dir(follow_symlinks=False):
                 pending.append(path)
@@ -69,7 +76,7 @@ def owned(root, token):
 
 def copy_game(source, destination, token, progress, cancelled):
     source, destination = output_path(source, destination)
-    paths = list(tree(source))
+    paths = list(tree(source, skip_workspace=True))
     total = sum(p.stat().st_size for p in paths)
     if shutil.disk_usage(destination.parent).free < total + 100_000_000:
         raise ValueError("Недостаточно свободного места для отдельной копии игры")

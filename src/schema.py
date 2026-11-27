@@ -47,6 +47,12 @@ def initialize(db):
     for column in ["completed", "keep_visible", "deleting"]:
         if column not in {r[1] for r in db.execute("PRAGMA table_info(projects)")}:
             db.execute(f"ALTER TABLE projects ADD COLUMN {column} INTEGER DEFAULT 0")
+    if "workspace_token" not in {
+        r[1] for r in db.execute("PRAGMA table_info(projects)")
+    }:
+        db.execute(
+            "ALTER TABLE projects ADD COLUMN workspace_token TEXT NOT NULL DEFAULT ''"
+        )
     for table in ["projects", "jobs", "files", "records"]:
         db.execute(
             "INSERT OR IGNORE INTO id_counters VALUES (?,?)",

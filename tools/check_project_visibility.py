@@ -81,7 +81,7 @@ def main():
                     "select hidden,completed,keep_visible from projects where id=?",
                     (project,),
                 ).fetchone()
-            ) == (0, 0, 0)
+            ) == (0, 0, 1)
             assert (
                 tuple(
                     db.execute(

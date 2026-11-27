@@ -25,7 +25,13 @@ def restore_project(store, data):
 def project(store, data):
     from game_detection import inspect_project, import_detected
 
-    p = store.project(data["root"])
+    p, status = store.project(data["root"], with_status=True)
+    if status != "created":
+        return {
+            "project": p,
+            "status": status,
+            "import": {"files": 0, "added": 0, "errors": []},
+        }
     report = inspect_project(store, p["id"])
     paths = report["auto_import"]
     if data.get("scan") and report["engine"]["id"] not in {"multiple"}:
@@ -39,6 +45,7 @@ def project(store, data):
     result = import_detected(store, p["id"], paths)
     return {
         "project": p,
+        "status": status,
         "import": result,
         "analysis": {"engine": report["engine"], "partial": report["partial"]},
     }
@@ -61,21 +68,19 @@ def import_files(store, data):
 
 
 def upload(store, data):
-    with store.db() as db:
-        p = db.execute(
-            "SELECT root FROM projects WHERE id=?", (int(data["project"]),)
-        ).fetchone()
-    folder = Path(p[0]) / "translation_tools" / "studio" / "imports"
+    from project_workspace import ensure, inside
+
+    folder = inside(ensure(store, int(data["project"])), "imports")
     folder.mkdir(parents=True, exist_ok=True)
     paths = []
     for f in data["files"]:
         name = Path(f["name"]).name
         if Path(name).suffix.lower() not in {".txt", ".json", ".jsonl", ".csv", ".rpy"}:
             raise ValueError("Неподдерживаемый файл")
-        dest = folder / name
+        dest = inside(folder, name)
         content = f["text"]
         if dest.exists() and dest.read_text(encoding="utf-8") != content:
-            dest = folder / (str(time.time_ns()) + "-" + name)
+            dest = inside(folder, str(time.time_ns()) + "-" + name)
         if not dest.exists():
             dest.write_text(content, encoding="utf-8")
         paths.append(str(dest))

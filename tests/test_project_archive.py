@@ -1,7 +1,7 @@
 import json, tempfile, unittest
 from pathlib import Path
 from core import Store
-from app import state
+from app import api, state
 
 
 class ProjectArchiveTests(unittest.TestCase):
@@ -65,6 +65,27 @@ class ProjectArchiveTests(unittest.TestCase):
     def test_unknown_project_rejected(self):
         with self.assertRaises(ValueError):
             self.store.hide_project(999)
+
+    def test_open_existing_folder_has_status_and_skips_reimport(self):
+        from unittest.mock import patch
+
+        preferences = '{"target_language":"Russian","context":12288}'
+        with self.store.db() as db:
+            db.execute(
+                "UPDATE projects SET settings=? WHERE id=?", (preferences, self.pid)
+            )
+        original = self.store.record(1)
+        data = {"root": str(self.root / "."), "scan": True}
+        with patch(
+            "game_detection.inspect_project", side_effect=AssertionError("reimport")
+        ):
+            self.assertEqual(api(self.store, "project", data)["status"], "existing")
+            self.store.hide_project(self.pid)
+            result = api(self.store, "project", data)
+        self.assertEqual(result["status"], "restored")
+        self.assertEqual(result["project"]["id"], self.pid)
+        self.assertEqual(result["project"]["settings"], preferences)
+        self.assertEqual(self.store.record(1), original)
 
 
 if __name__ == "__main__":

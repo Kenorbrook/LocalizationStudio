@@ -582,6 +582,7 @@ $("activeProjectJob").onclick = guard(async () => {
     document.querySelector(".right").scrollTop = 0;
 });
 $("openProject").onclick = guard(async () => {
+  if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
   studioLifecycle.notify("projectNavigation");
   let r = await request("project", {
     root: $("rootPath").value,
@@ -592,6 +593,14 @@ $("openProject").onclick = guard(async () => {
   studioState.offset = 0;
   $("projectDialog").close();
   await refresh(true);
+  if (r.status === "existing") {
+    toast("Проект уже добавлен");
+    return;
+  }
+  if (r.status === "restored") {
+    toast("Проект восстановлен из архива");
+    return;
+  }
   toast(
     "Добавлено строк: " +
       r.import.added +

@@ -96,6 +96,8 @@ def remove_secret(pid):
 
 
 def delete_project(store, pid, stopper=stop_worker):
+    from project_workspace import remove_owned
+
     with store.db() as db:
         if not db.execute("SELECT id FROM projects WHERE id=?", (pid,)).fetchone():
             raise ValueError("Проект не найден")
@@ -112,6 +114,7 @@ def delete_project(store, pid, stopper=stop_worker):
             (pid,),
         )
     stopped = sum(bool(stopper(store, job)) for job in jobs)
+    remove_owned(store, pid)
     remove_secret(pid)
     result = store.delete_project_data(pid)
     result["stopped_workers"] = stopped

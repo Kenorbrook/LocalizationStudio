@@ -31,6 +31,8 @@ def launch(store, jid):
 
 
 def _launch(store, jid):
+    from project_workspace import ensure, inside
+
     if getattr(sys, "frozen", False):
         executable = APP_HOME / "LocalizationWorker.exe"
         pointer = APP_HOME / "worker_version.txt"
@@ -48,14 +50,13 @@ def _launch(store, jid):
         args = [sys.executable, str(ROOT / "app.py")]
     with store.db() as db:
         job = db.execute(
-            "SELECT state FROM jobs WHERE id=?",
+            "SELECT state,project FROM jobs WHERE id=?",
             (jid,),
         ).fetchone()
     if not job or job["state"] != "queued":
         raise ValueError("Запустить можно только задачу в очереди")
     args += ["--worker", str(jid), "--db", str(store.path)]
-    folder = store.path.parent / "worker-logs"
-    folder.mkdir(parents=True, exist_ok=True)
+    process_log = inside(ensure(store, job["project"]), f"job-{jid}-process.log")
     launch_token = uuid.uuid4().hex
     with store.db() as db:
         db.execute(
@@ -63,7 +64,7 @@ def _launch(store, jid):
             (time.time(), launch_token, jid),
         )
     try:
-        with (folder / f"job-{jid}-process.log").open("ab") as output:
+        with process_log.open("ab") as output:
             process = subprocess.Popen(
                 args,
                 stdin=subprocess.DEVNULL,

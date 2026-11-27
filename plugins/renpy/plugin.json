@@ -1,7 +1,7 @@
 {
   "id": "renpy",
   "name": "Ren’Py: локализация игры",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "api_version": 1,
   "min_app_version": "0.7.0",
   "category": "Движки игр",

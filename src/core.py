@@ -37,8 +37,8 @@ class Store:
     def next_id(db, table):
         return Database.next_id(db, table)
 
-    def project(self, root):
-        return self.projects.project(root)
+    def project(self, root, with_status=False):
+        return self.projects.project(root, with_status)
 
     def hide_project(self, pid, hidden=True):
         return self.projects.hide_project(pid, hidden)

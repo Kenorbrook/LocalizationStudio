@@ -23,6 +23,7 @@ SKIP = {
     "cache",
     "caches",
     "translation_tools",
+    ".localization-studio",
     "build",
     "dist",
     "release",

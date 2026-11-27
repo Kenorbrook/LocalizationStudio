@@ -263,14 +263,6 @@ const workspaceUi = (() => {
   $("historyMaxSeconds").step = "any";
   $("processPageSize").max = 200;
   historySettings.hidden = true;
-  const manage = element("details", undefined, "ux-advanced");
-  manage.append(
-    element("summary", "Архив и управление проектами"),
-    manageProjects,
-  );
-  setText(manageProjects, "Открыть управление проектами");
-  files.append(manage);
-
   const integrations = section("integrations", "Подключения");
   const api = group(integrations, "Облачный перевод");
   toggle(api, "cloud_enabled", "Разрешить облачные модели для проекта");
@@ -408,7 +400,7 @@ const workspaceUi = (() => {
     "ux-project-settings-button",
   );
   open.id = "projectSettingsButton";
-  $("projectPicker").after(open, navigation);
+  $("projectPicker").after(open, manageProjects, navigation);
   const fileHeading = sidebar.querySelector("h2");
   fileHeading.textContent = "Файлы проекта";
   const fileMenu = element("details", undefined, "ux-file-tree");
