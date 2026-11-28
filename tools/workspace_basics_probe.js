@@ -52,6 +52,17 @@ void (async () => {
           JSON.stringify(colors(".dashboard-swatch")),
       "hour chart has no spare column and stacks distinct colors matching its legend",
     );
+    const latestBar = bars[bars.length - 1];
+    latestBar.dispatchEvent(new MouseEvent("mouseenter"));
+    check(
+      !$("contextTooltip").hidden &&
+        $("contextTooltip").textContent.includes("fixture-model") &&
+        $("contextTooltip").textContent.includes("fixture-local") &&
+        !latestBar.hasAttribute("title"),
+      "chart tooltip opens immediately with both models",
+    );
+    latestBar.dispatchEvent(new MouseEvent("mouseleave"));
+    check($("contextTooltip").hidden, "chart tooltip closes on mouse leave");
     check(
       $("taskCard").contains($("progressError")) &&
         $("progressText").textContent.includes("1 / 2"),
@@ -328,6 +339,7 @@ void (async () => {
         retry_at: retryAt,
         error: "Провайдер временно недоступен: HTTP 504",
       });
+      response.projects.find((item) => item.id === response.project).active = 1;
       Object.assign(response.activity[0], {
         state: "running",
         retry_at: retryAt,
@@ -342,6 +354,15 @@ void (async () => {
           $("progressError").textContent.includes("повтор через") &&
           !$("mainAction").disabled,
         "API wait shows retry countdown and leaves pause available",
+      );
+      const indicator = $("projectActivityIndicator");
+      check(
+        !indicator.hidden &&
+          getComputedStyle(indicator).animationName ===
+            "project-status-pulse" &&
+          $("projects").getAttribute("aria-describedby") === indicator.id &&
+          !$("projects").selectedOptions[0].textContent.includes("⟳"),
+        "active project shows a labeled pulse instead of a reload arrow",
       );
     } finally {
       request = originalRequest;

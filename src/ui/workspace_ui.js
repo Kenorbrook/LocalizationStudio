@@ -54,6 +54,20 @@ const workspaceUi = (() => {
     };
     return button;
   }
+  function bindTooltip(anchor, text) {
+    const show = () => showHelp(anchor, text);
+    const hide = () => {
+      if (helpOwner === anchor) hideHelp();
+    };
+    anchor.addEventListener("mouseenter", show);
+    anchor.addEventListener("mouseleave", hide);
+    anchor.addEventListener("focus", show);
+    anchor.addEventListener("blur", hide);
+    anchor.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") hide();
+    });
+    return hide;
+  }
   function disabledReason(button, reason) {
     const wrapper = element("span", undefined, "disabled-reason");
     wrapper.append(button);
@@ -798,6 +812,7 @@ const workspaceUi = (() => {
     openSettings,
     selectTab,
     help,
+    bindTooltip,
     disabledReason,
     refreshDependencies,
     registerTab,

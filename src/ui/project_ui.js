@@ -96,6 +96,10 @@ function updateProjectScreen() {
     (p) => p.id == studioState.project,
   );
   const active = !!p?.active;
+  projectActivityIndicator.hidden = !active;
+  if (active)
+    $("projects").setAttribute("aria-describedby", projectActivityIndicator.id);
+  else $("projects").removeAttribute("aria-describedby");
   const waitingForApi =
     studioState.job?.state === "running" && !!studioState.job.retry_at;
   const av = JSON.stringify([
@@ -810,6 +814,13 @@ studioLifecycle.register(
 const projectPicker = element("div", undefined, "project-picker");
 projectPicker.id = "projectPicker";
 $("projects").before(projectPicker);
+const projectActivityIndicator = element(
+  "span",
+  "В проекте есть активная задача",
+  "project-status-dot",
+);
+projectActivityIndicator.id = "projectActivityIndicator";
+projectActivityIndicator.hidden = true;
 const manageProjects = element(
   "button",
   "Архив и управление проектами",
@@ -818,7 +829,7 @@ const manageProjects = element(
 manageProjects.id = "projectArchiveMenu";
 manageProjects.title = "Управление проектами";
 manageProjects.setAttribute("aria-label", "Управление проектами");
-projectPicker.append($("projects"), manageProjects);
+projectPicker.append(projectActivityIndicator, $("projects"), manageProjects);
 const managerHeader = element("div", undefined, "project-manager-header");
 const managerTitle = element("h1", "Управление проектами");
 managerTitle.id = "projectManagerTitle";

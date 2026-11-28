@@ -148,7 +148,35 @@ body textarea {
   border-radius: 7px;
 }
 body #projectPicker {
+  position: relative;
   margin: 8px 0 10px;
+}
+.project-status-dot {
+  position: absolute;
+  z-index: 1;
+  left: 12px;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  overflow: hidden;
+  font-size: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background: var(--accent);
+  animation: project-status-pulse 1.7s ease-out infinite;
+}
+#projectActivityIndicator:not([hidden]) + #projects {
+  padding-left: 30px;
+}
+@keyframes project-status-pulse {
+  from {
+    box-shadow: 0 0 0 0 #94deca88;
+  }
+  75%,
+  to {
+    box-shadow: 0 0 0 5px #94deca00;
+  }
 }
 .ux-project-settings-button {
   width: 100%;
@@ -955,6 +983,9 @@ body #toast {
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .project-status-dot {
+    animation: none;
+  }
   body button {
     transition: none;
   }

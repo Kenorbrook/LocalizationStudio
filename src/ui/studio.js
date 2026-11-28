@@ -138,13 +138,18 @@ async function refreshState(initial = false) {
   );
   studioState.project = studioState.snapshot.project || 0;
   showActivity();
-  const pv = JSON.stringify(
+  const pv = JSON.stringify([
+    studioState.project,
     studioState.snapshot.projects.map((p) => [p.id, p.name, p.active]),
-  );
+  ]);
   if (pv !== projectVersion) {
     $("projects").replaceChildren(
       ...studioState.snapshot.projects.map((p) => {
-        let o = element("option", (p.active ? "⟳ " : "") + p.name);
+        const o = element(
+          "option",
+          p.name +
+            (p.active && p.id !== studioState.project ? " · В работе" : ""),
+        );
         o.value = p.id;
         return o;
       }),

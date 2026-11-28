@@ -84,7 +84,10 @@
       hour: "2-digit",
       minute: "2-digit",
     });
+  let hideBarTooltip;
   function renderStats() {
+    hideBarTooltip?.();
+    hideBarTooltip = null;
     graph.replaceChildren();
     scale.replaceChildren();
     models.replaceChildren();
@@ -126,7 +129,16 @@
         bar.append(segment);
         breakdown.push(modelName(name) + " · " + number(amount));
       }
-      if (values[i]) bar.title = breakdown.join("\n");
+      if (values[i]) {
+        const label = breakdown.join("\n");
+        bar.tabIndex = 0;
+        bar.setAttribute("role", "img");
+        bar.setAttribute("aria-label", label);
+        const hide = workspaceUi.bindTooltip(bar, label);
+        const trackTooltip = () => (hideBarTooltip = hide);
+        bar.addEventListener("mouseenter", trackTooltip);
+        bar.addEventListener("focus", trackTooltip);
+      }
       graph.append(bar);
     }
     scale.append(
