@@ -480,14 +480,36 @@ void (async () => {
       const target = +source.value;
       executor.value = "api:fixture-global";
       executor.onchange();
-      parallelForm.querySelector("[list=parallelCloudModels]").value =
-        "second-model";
+      const apiModel = parallelForm.querySelector("[list=parallelCloudModels]");
+      apiModel.value = "deepseek-v4.1-flash-1017-uncensored";
+      apiModel.dispatchEvent(new Event("input"));
+      const outputLimit = [...parallelForm.querySelectorAll("label")]
+        .find((item) => item.textContent.includes("Лимит ответа, токенов"))
+        .querySelector("input");
+      const contextMode = [...parallelForm.querySelectorAll("label")]
+        .find((item) => item.textContent.includes("Параметры модели API"))
+        .querySelector("select");
+      check(
+        contextMode.value === "auto" && outputLimit.disabled,
+        "new API queues select recommended context automatically",
+      );
+      contextMode.value = "manual";
+      contextMode.onchange();
+      check(
+        !outputLimit.disabled && outputLimit.value === "4096",
+        "switching to manual starts at the current recommendation",
+      );
+      contextMode.value = "auto";
+      contextMode.onchange();
       await parallelForm.onsubmit(new Event("submit", { cancelable: true }));
       check(
         newTaskPayload.split_from === target &&
           newTaskPayload.provider === "cloud" &&
           newTaskPayload.settings.cloud_connection === "fixture-global" &&
-          newTaskPayload.settings.cloud_model === "second-model",
+          newTaskPayload.settings.cloud_model === "deepseek-v4.1-flash-1017-uncensored" &&
+          newTaskPayload.settings.context === 32768 &&
+          newTaskPayload.settings.max_output === 4096 &&
+          newTaskPayload.settings.cloud_tuning === "auto",
         "split sends source queue and new API executor independently",
       );
     } finally {

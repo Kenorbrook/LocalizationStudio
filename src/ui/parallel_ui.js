@@ -156,7 +156,25 @@ const projectQueues = (() => {
     }),
   );
   const tuningDetails = element("details");
-  tuningDetails.append(element("summary", "Контекст и лимиты"), tuning);
+  const cloudTuning = element("select");
+  cloudTuning.append(
+    option("auto", "Автоматически"),
+    option("manual", "Вручную"),
+  );
+  const cloudTuningField = field("Параметры модели API", cloudTuning);
+  const tuningSummary = element("p", undefined, "sub");
+  const contextFields = [
+    "context",
+    "max_output",
+    "context_before",
+    "context_after",
+  ];
+  tuningDetails.append(
+    element("summary", "Контекст и лимиты"),
+    cloudTuningField,
+    tuningSummary,
+    tuning,
+  );
   form.append(
     stageField,
     sourceField,
@@ -414,6 +432,44 @@ const projectQueues = (() => {
   function chosenConnection() {
     return connections.find((item) => executor.value === "api:" + item.id);
   }
+  function contextPreset() {
+    const longContext =
+      /^(?:deepseek-v4\.1-flash-1017-uncensored(?:-thinking)?|glm-5\.3-(?:flash-)?(?:abliterated|uncensored))$/i.test(
+        model.value.trim(),
+      );
+    return {
+      context: longContext ? 32768 : 16384,
+      max_output: longContext ? 4096 : 3000,
+      context_before: 12,
+      context_after: 8,
+    };
+  }
+  function renderTuning() {
+    const recommended = chosenConnection() && cloudTuning.value === "auto";
+    cloudTuningField.hidden = !chosenConnection();
+    tuningSummary.hidden = !recommended;
+    for (const key of contextFields) {
+      const input = inputs[key].input;
+      input.disabled = !!recommended;
+      input.closest("label").hidden = !!recommended;
+    }
+    if (recommended) {
+      const { context, max_output, context_before, context_after } =
+        contextPreset();
+      setText(
+        tuningSummary,
+        `${context.toLocaleString("ru-RU")} токенов контекста · до ${max_output.toLocaleString("ru-RU")} на ответ · ${context_before} фраз до / ${context_after} после`,
+      );
+    }
+  }
+  cloudTuning.onchange = () => {
+    if (cloudTuning.value === "manual") {
+      for (const [key, value] of Object.entries(contextPreset()))
+        inputs[key].input.value = value;
+    }
+    renderTuning();
+  };
+  model.oninput = renderTuning;
   function renderExecutor(prefill = "") {
     const connection = chosenConnection();
     modelField.hidden = !connection;
@@ -426,6 +482,7 @@ const projectQueues = (() => {
     suggestions.replaceChildren(
       ...(connection?.models || []).map((id) => option(id, id)),
     );
+    renderTuning();
   }
   executor.onchange = () => renderExecutor();
   function changeSource() {
@@ -495,6 +552,8 @@ const projectQueues = (() => {
     stage.value = job?.stage || (split ? "translate" : initialStage);
     const config = job ? JSON.parse(job.settings || "{}") : null;
     const defaults = config || settings();
+    cloudTuning.value =
+      config?.cloud_tuning || (job?.provider === "cloud" ? "manual" : "auto");
     loadLanguages(defaults);
     for (const [key, { input, fallback }] of Object.entries(inputs))
       input.value = defaults[key] ?? fallback;
@@ -627,6 +686,8 @@ const projectQueues = (() => {
     };
     if (connection)
       Object.assign(values, {
+        ...(cloudTuning.value === "auto" ? contextPreset() : {}),
+        cloud_tuning: cloudTuning.value,
         endpoint: connection.endpoint,
         cloud_connection: connection.id,
         cloud_model: model.value.trim(),
