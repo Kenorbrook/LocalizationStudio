@@ -178,8 +178,94 @@ def parallel_job(store, data):
     return {"job": jid}
 
 
+def queue_settings(store, data):
+    jid = int(data["id"])
+    with store.db() as db:
+        row = db.execute(
+            "SELECT j.* FROM jobs j JOIN projects p ON p.id=j.project WHERE j.id=? AND p.deleting=0",
+            (jid,),
+        ).fetchone()
+    if (
+        not row
+        or row["state"] not in {"paused", "waiting", "held"}
+        or row["worker_active"]
+    ):
+        raise ValueError("Приостановите задачу и дождитесь остановки обработчика")
+    provider = data["provider"]
+    if (
+        row["stage"] == "cloud"
+        and provider not in {"cloud", "mcp"}
+        or row["stage"] == "analyze"
+        and provider == "mcp"
+    ):
+        raise ValueError("Этот исполнитель недоступен для этапа")
+    old = json.loads(row["settings"])
+    from cloud_connections import preserve_legacy
+
+    options = {
+        key: value for key, value in data["settings"].items() if not key.startswith("_")
+    }
+    if (
+        provider == "cloud"
+        and not options.get("cloud_connection", old.get("cloud_connection"))
+        and (
+            row["provider"] != "cloud"
+            or options.get("endpoint", old.get("endpoint")) != old.get("endpoint")
+        )
+    ):
+        raise ValueError("Выберите API-ключ для этого адреса")
+    settings = validate_job_settings(
+        store, row["project"], provider, {**old, **options}, old
+    )
+    settings.update(neighbor_settings(settings))
+    preserve_legacy(old, settings)
+    settings["_queue_configured"] = True
+    with store.db() as db:
+        changed = db.execute(
+            "UPDATE jobs SET settings=?,provider=? WHERE id=? AND settings=? AND provider=? "
+            "AND state IN ('paused','waiting','held') AND worker_active=0 "
+            "AND EXISTS(SELECT 1 FROM projects WHERE id=jobs.project AND deleting=0)",
+            (dump(settings), provider, jid, row["settings"], row["provider"]),
+        )
+        if not changed.rowcount:
+            raise ValueError("Очередь изменилась. Откройте настройки заново")
+    return {"ok": True}
+
+
+def queue_priority(store, data):
+    jid = int(data["id"])
+    direction = data["direction"]
+    if direction not in ("up", "down"):
+        raise ValueError("Некорректное направление")
+    with store.db() as db:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT project FROM jobs WHERE id=? AND state='waiting'", (jid,)
+        ).fetchone()
+        if not row:
+            raise ValueError("Приоритет можно менять у ожидающей очереди")
+        waiting = [
+            r[0]
+            for r in db.execute(
+                "SELECT id FROM jobs WHERE project=? AND state='waiting' ORDER BY queue_order,id",
+                (row["project"],),
+            )
+        ]
+        position = waiting.index(jid)
+        other = position + (-1 if direction == "up" else 1)
+        if 0 <= other < len(waiting):
+            waiting[position], waiting[other] = waiting[other], waiting[position]
+            db.executemany(
+                "UPDATE jobs SET queue_order=? WHERE id=?",
+                enumerate(waiting, -len(waiting)),
+            )
+    return {"ok": True}
+
+
 def control(store, data):
-    if data.get("mode") == "resume" and getattr(store, "hermes_inference", False):
+    if data.get("mode") in {"resume", "start"} and getattr(
+        store, "hermes_inference", False
+    ):
         raise ValueError("Сначала завершите или остановите работу Hermes")
     from worker_supervision import recover_workers
 
@@ -191,8 +277,10 @@ def control(store, data):
         job = db.execute("SELECT * FROM jobs WHERE id=?", (jid,)).fetchone()
         if not job:
             raise ValueError("Задача не найдена")
-        if mode == "resume":
-            if job["state"] not in {"paused", "held"}:
+        if mode in {"resume", "start"}:
+            if mode == "start" and job["state"] != "waiting":
+                raise ValueError("Выберите ожидающую очередь")
+            if mode == "resume" and job["state"] not in {"paused", "held"}:
                 raise ValueError("Продолжить можно задачу на паузе")
             peers = db.execute(
                 "SELECT id,parallel,stage FROM jobs WHERE project=? AND id<>? AND (state IN ('running','queued','paused') OR worker_active=1)",
@@ -200,7 +288,7 @@ def control(store, data):
             ).fetchall()
             if any(
                 "analyze" in (job["stage"], peer["stage"])
-                or not (job["parallel"] or peer["parallel"])
+                or not (mode == "start" or job["parallel"] or peer["parallel"])
                 for peer in peers
             ):
                 raise ValueError("Сначала завершите текущую задачу проекта")
@@ -267,7 +355,10 @@ def control(store, data):
                     "UPDATE projects SET settings=? WHERE id=?",
                     (dump(saved), job["project"]),
                 )
-            db.execute("UPDATE jobs SET state='queued' WHERE id=?", (jid,))
+            db.execute(
+                "UPDATE jobs SET state='queued',parallel=CASE WHEN ? THEN 1 ELSE parallel END WHERE id=?",
+                (mode == "start", jid),
+            )
             db.execute(
                 "UPDATE jobs SET state='waiting' WHERE project=? AND state='held'",
                 (job["project"],),
@@ -279,7 +370,15 @@ def control(store, data):
             )
         else:
             raise ValueError("Некорректная команда")
-    if mode == "resume":
-        store.classify_preserved(job["project"])
-        job_runtime.launch(store, jid)
+    if mode in {"resume", "start"}:
+        try:
+            store.classify_preserved(job["project"])
+            job_runtime.launch(store, jid)
+        except Exception:
+            with store.db() as db:
+                db.execute(
+                    "UPDATE jobs SET state='paused',error='Не удалось запустить обработчик' WHERE id=? AND state='queued' AND worker_active=0",
+                    (jid,),
+                )
+            raise
     return {"ok": True}

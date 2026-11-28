@@ -10,6 +10,7 @@ from commands import dispatch
 from core import Store
 from process_view import queue_page
 from storage.jobs import split_tail
+from translation_stats import overview
 from worker import run
 
 
@@ -165,3 +166,77 @@ class ParallelQueueTests(unittest.TestCase):
         rows = [(1, 1, "a"), (2, 1, "a"), (3, 1, "a"), (4, 2, "b"), (5, 2, "b")]
         self.assertEqual(split_tail(rows, 3), rows[-2:])
         self.assertEqual(split_tail(rows[:3], 2), rows[1:3])
+
+    def test_queue_edits_and_priority_are_scoped(self):
+        first = self.store.create_job(
+            self.project, "translate", "local", self.options, record_ids=[1], defer=True
+        )
+        second = self.store.create_job(
+            self.project, "translate", "local", self.options, record_ids=[2], defer=True
+        )
+        dispatch(self.store, "queue-priority", {"id": second, "direction": "up"})
+        dispatch(
+            self.store,
+            "queue-settings",
+            {
+                "id": second,
+                "provider": "local",
+                "settings": {
+                    "model": "another",
+                    "context": 16384,
+                    "context_before": 6,
+                    "run_lines": 2,
+                },
+            },
+        )
+        with self.store.db() as db:
+            rows = db.execute(
+                "SELECT id,settings FROM jobs ORDER BY queue_order,id"
+            ).fetchall()
+            self.assertEqual([r["id"] for r in rows], [second, first])
+            edited = json.loads(rows[0]["settings"])
+            self.assertEqual(
+                (
+                    edited["model"],
+                    edited["context"],
+                    edited["context_before"],
+                    edited["run_lines"],
+                ),
+                ("another", 16384, 6, 2),
+            )
+            self.assertEqual(
+                json.loads(rows[1]["settings"])["model"], self.options["model"]
+            )
+            self.assertEqual(
+                db.execute("SELECT settings FROM projects").fetchone()[0], "{}"
+            )
+        with patch("job_runtime.launch") as launch:
+            dispatch(
+                self.store,
+                "control",
+                {"id": second, "mode": "start", "preserve_project_settings": True},
+            )
+        launch.assert_called_once_with(self.store, second)
+        with self.assertRaisesRegex(ValueError, "Приостановите"):
+            dispatch(
+                self.store,
+                "queue-settings",
+                {"id": second, "provider": "local", "settings": {}},
+            )
+
+    def test_translation_graph_counts_saved_model_output(self):
+        start = int(time.time()) - 180
+        jid = self.store.create_job(self.project, "translate", "local", self.options)
+        with self.store.db() as db:
+            db.execute("UPDATE jobs SET run_started=? WHERE id=?", (start, jid))
+        self.store.update(1, 0, "Один два три.", "translated", "local:fixture")
+        self.store.update(2, 0, "Четыре пять.", "translated", "cloud:other")
+        self.store.update(2, 1, "После редактуры.", "edited", "local:fixture")
+        self.store.update(3, 0, "Ручной перевод.", "translated", "human", manual=True)
+        for period in ("hour", "day", "session"):
+            result = overview(self.store, self.project, period)
+            self.assertEqual(sum(row["lines"] for row in result["buckets"]), 2)
+            self.assertEqual(sum(row["words"] for row in result["buckets"]), 5)
+            self.assertEqual(
+                result["models"]["local:fixture"], {"lines": 1, "words": 3}
+            )

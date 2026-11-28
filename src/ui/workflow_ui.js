@@ -2,7 +2,7 @@
 const continuationLimits = createRunLimitControls(
   "runLimits",
   "Параметры следующего продолжения",
-  "Применятся после нажатия «Продолжить»: новый отсчёт с нуля. После достижения лимита очередь встанет на паузу; текущий запрос сначала завершится.",
+  "По достижении лимита очередь встанет на паузу.",
 );
 const newRunLimits = createRunLimitControls(
   "newRunLimits",

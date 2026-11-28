@@ -33,6 +33,8 @@ HANDLERS = {
     "retry-errors": jobs.retry_errors,
     "job": jobs.job,
     "parallel-job": jobs.parallel_job,
+    "queue-settings": jobs.queue_settings,
+    "queue-priority": jobs.queue_priority,
     "control": jobs.control,
     "process-settings": settings.process_settings,
     "language-preview": settings.language_preview,

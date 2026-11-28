@@ -94,14 +94,21 @@ const stageTitles = {
 function showActivity() {
   const active = studioState.snapshot.activity || [];
   const live = active.filter((j) => j.state !== "paused");
+  const project = studioState.snapshot?.projects.find(
+    (p) => p.id === studioState.project,
+  );
   const task =
     live.find((j) => j.project === studioState.project) ||
-    live[0] ||
-    active.find((j) => j.project === studioState.project) ||
-    active[0];
+    active.find((j) => j.project === studioState.project);
   const button = $("activeProjectJob");
-  button.hidden = !task;
-  if (!task) return;
+  button.hidden = !project || studioState.viewMode === "home";
+  button.dataset.project = project?.id || "";
+  if (!project) return;
+  if (!task) {
+    button.title = project.name;
+    setText(button, project.name);
+    return;
+  }
   const status =
     task.state === "paused"
       ? "Пауза"
@@ -352,6 +359,7 @@ function pendingTranslationText(job) {
 function usesSavedExecutor(job) {
   return !!(
     job?.parallel ||
+    JSON.parse(job?.settings || "{}")._queue_configured ||
     studioState.snapshot?.jobs.some(
       (other) =>
         other.parallel && ["running", "queued", "paused"].includes(other.state),
@@ -615,8 +623,10 @@ $("activeProjectJob").onclick = guard(async () => {
     $("projects").value = target;
     await $("projects").onchange();
   }
-  if (studioState.project === target)
-    document.querySelector(".right").scrollTop = 0;
+  if (studioState.project === target) {
+    showView("home");
+    center.scrollTop = 0;
+  }
 });
 $("openProject").onclick = guard(async () => {
   if (studioState.dirty.size) throw Error("Сохраните или отмените правки");

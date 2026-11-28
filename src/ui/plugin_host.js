@@ -15,7 +15,7 @@ const pluginHost = (() => {
     "project.toolbar": () => document.querySelector(".center .toolbar"),
     "project.activity": () => document.querySelector("aside.right"),
     "project.overview": () =>
-      $("projectHome").querySelector(".ux-overview-grid"),
+      $("projectPreparation").querySelector(".project-plugin-tools"),
     "project.errors.actions": () => errorsPane,
     "project.workflow.files": () =>
       $("journeyStep-files").querySelector(".journey-actions"),

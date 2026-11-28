@@ -95,6 +95,7 @@ def initialize(db):
         ("worker_launch", "TEXT DEFAULT ''"),
         ("retry_at", "REAL NOT NULL DEFAULT 0"),
         ("parallel", "INTEGER NOT NULL DEFAULT 0"),
+        ("queue_order", "INTEGER NOT NULL DEFAULT 0"),
     ]:
         if name not in job_columns:
             db.execute(f"ALTER TABLE jobs ADD COLUMN {name} {definition}")

@@ -61,7 +61,7 @@ def record_context(store, rid, radius=10):
     }
 
 
-def job_log(store, jid):
+def job_log_path(store, jid):
     from project_workspace import lookup, inside
 
     with store.db() as db:
@@ -83,17 +83,21 @@ def job_log(store, jid):
             store.path.parent / "worker-logs" / f"job-{jid}-process.log",
         ]
     )
-    path = next((candidate for candidate in candidates if candidate.is_file()), None)
+    return next((candidate for candidate in candidates if candidate.is_file()), None)
+
+
+def job_log(store, jid, lines=80):
+    path = job_log_path(store, jid)
     if path is None:
         return {"text": ""}
     with path.open("rb") as stream:
         size = stream.seek(0, 2)
-        start = max(0, size - 32768)
+        start = max(0, size - (1048576 if lines > 80 else 32768))
         stream.seek(start)
         if start:
             stream.readline()
-        lines = stream.read().decode("utf-8", errors="replace").splitlines()
-    return {"text": "\n".join(lines[-80:])}
+        log_lines = stream.read().decode("utf-8", errors="replace").splitlines()
+    return {"text": "\n".join(log_lines[-lines:])}
 
 
 def state(store, project, editing=False):
@@ -150,7 +154,7 @@ def state(store, project, editing=False):
         jobs = [
             dict(r)
             for r in db.execute(
-                "SELECT * FROM jobs WHERE project=? ORDER BY CASE WHEN state IN ('running','queued','paused','waiting','held') THEN 0 ELSE 1 END,CASE WHEN state IN ('running','queued','paused','waiting','held') THEN id ELSE -id END LIMIT 100",
+                "SELECT * FROM jobs WHERE project=? ORDER BY CASE WHEN state IN ('running','queued','paused','waiting','held') THEN 0 ELSE 1 END,CASE WHEN state='waiting' THEN queue_order ELSE 0 END,CASE WHEN state IN ('running','queued','paused','waiting','held') THEN id ELSE -id END LIMIT 100",
                 (project,),
             )
         ]

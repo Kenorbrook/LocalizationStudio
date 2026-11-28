@@ -74,7 +74,7 @@ def _schedule(store, pid):
         ).fetchone():
             return None
         first = db.execute(
-            "SELECT id,settings FROM jobs WHERE project=? AND state='waiting' ORDER BY id LIMIT 1",
+            "SELECT id,settings FROM jobs WHERE project=? AND state='waiting' ORDER BY queue_order,id LIMIT 1",
             (pid,),
         ).fetchone()
         if not first:

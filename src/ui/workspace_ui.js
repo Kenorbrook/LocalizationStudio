@@ -333,21 +333,13 @@ const workspaceUi = (() => {
   setText(limitMenu.querySelector("summary"), "Параметры продолжения");
   taskCard.insertBefore(scope, mainAction);
   taskCard.insertBefore(newRunLimits.section, taskMenu);
-  const taskHelp = help(
-    () => actionHint.textContent,
-    "Что произойдёт при запуске",
-  );
   const primaryRow = element("div", undefined, "ux-primary-action");
   mainAction.before(primaryRow);
-  primaryRow.append(mainAction, taskHelp);
+  primaryRow.append(mainAction);
   actionHint.hidden = true;
-  const modelDetails = help(
-    () => activeSettings.dataset.fullDescription || activeSettings.textContent,
-    "Параметры текущей задачи",
-  );
   const executorSummary = element("div", undefined, "ux-executor-summary");
   primaryRow.after(executorSummary);
-  executorSummary.append(activeSettings, modelDetails);
+  executorSummary.append(activeSettings);
   reviewHint.hidden = true;
   reviewMenu
     .querySelector("summary")
@@ -375,7 +367,7 @@ const workspaceUi = (() => {
     },
     true,
   );
-  const overview = element("button", "Перевод игры");
+  const overview = element("button", "Проект");
   overview.id = "viewOverview";
   overview.onclick = guard(() => {
     if (studioState.dirty.size) throw Error("Сохраните или отмените правки");
@@ -400,6 +392,8 @@ const workspaceUi = (() => {
     "ux-project-settings-button",
   );
   open.id = "projectSettingsButton";
+  $("projectPicker").before($("newProject"));
+  $("newProject").classList.add("full");
   $("projectPicker").after(open, manageProjects, navigation);
   const fileHeading = sidebar.querySelector("h2");
   fileHeading.textContent = "Файлы проекта";
@@ -410,32 +404,7 @@ const workspaceUi = (() => {
   fileHeading.replaceWith(fileMenu);
   choices.hidden = true;
   projectTools.hidden = true;
-  const overviewGrid = element("div", undefined, "ux-overview-grid");
-  const contextCard = element("section", undefined, "ux-overview-card");
-  const contextTitle = element("h2", "Персонажи и термины");
-  contextTitle.append(
-    help(
-      "Справочник содержит персонажей, отношения, термины и неясные места с цитатами исходника. Подтверждённые сведения помогают переводу.",
-      "О справочнике проекта",
-    ),
-  );
-  contextCard.append(contextTitle, viewKnowledge);
-  const contextSettings = element(
-    "button",
-    "Настроить контекст",
-    "ux-text-button",
-  );
-  contextSettings.onclick = () => openSettings("context");
-  contextCard.append(contextSettings);
-  const projectCard = element("section", undefined, "ux-overview-card");
-  projectCard.append(element("h2", "Параметры проекта"));
-  const overviewSettings = element("div", undefined, "ux-overview-settings");
-  overviewSettings.id = "projectConfigurationSummary";
-  const editProject = element("button", "Изменить настройки", "ux-text-button");
-  editProject.onclick = () => openSettings("translation");
-  projectCard.append(overviewSettings, editProject);
-  overviewGrid.append(contextCard, projectCard);
-  home.append(overviewGrid);
+  group(context, "Справочник проекта").append(viewKnowledge);
   $("projectBack").hidden = true;
   const descriptionHelp = help(
     () => $("description").textContent,
@@ -710,7 +679,7 @@ const workspaceUi = (() => {
     taskMenu.hidden = !working && !resuming && !studioState.snapshot?.errors;
     $("logDetails").hidden = !studioState.job;
     fileMenu.hidden = studioState.viewMode !== "text";
-    $("projectBack").hidden = true;
+    $("projectBack").hidden = studioState.viewMode !== "plugins";
     const selected = studioState.viewMode;
     for (const [button, mode] of [
       [overview, "home"],
@@ -735,11 +704,6 @@ const workspaceUi = (() => {
         button.replaceChildren(name, separator, count);
       }
     }
-    const saved = JSON.parse(project?.settings || "{}");
-    setText(
-      overviewSettings,
-      `${saved.source_language || "English"} → ${saved.target_language || "Russian"}\n${saved.provider === "cloud" ? saved.cloud_model || "Облачная модель" : saved.provider === "mcp" ? "Внешний клиент" : saved.model || $("model").value}`,
-    );
     const stage = {
       translate: "Перевод",
       analyze: "Анализ проекта",

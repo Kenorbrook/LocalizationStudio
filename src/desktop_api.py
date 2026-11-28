@@ -35,6 +35,15 @@ class DesktopApi(CloseApi):
         )
         return (paths if isinstance(paths, str) else paths[0]) if paths else None
 
+    def open_job_log(self, job):
+        import os
+        from queries import job_log_path
+
+        path = job_log_path(self._store, int(job))
+        if not path:
+            raise ValueError("Файл журнала ещё не создан")
+        os.startfile(str(path))
+
     def cloud_connections(self):
         from cloud_connections import listing
 

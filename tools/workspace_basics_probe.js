@@ -10,12 +10,34 @@ void (async () => {
     await refresh(true);
     check(studioState.project === 1, "initial project");
     check(
-      !$("activeProjectJob").hidden &&
-        $("activeProjectJob").title.includes("fixture-model"),
-      "task in another project is visible",
+      $("activeProjectJob").hidden &&
+        $("projectSidebar").contains($("newProject")),
+      "project home keeps the header clear and open-project beside the picker",
     );
-    await $("activeProjectJob").onclick();
+    $("projects").value = 2;
+    await $("projects").onchange();
     check(studioState.project === 2, "navigate to paused task");
+    check(
+      !$("projectDashboard").closest("[hidden]") &&
+        $("projectPreparation").contains($("projectJourney")) &&
+        !$("projectPreparation").open &&
+        $("compactJobs").textContent.includes("fixture-model") &&
+        getComputedStyle($("taskCard")).display === "none",
+      "project dashboard separates preparation and uses compact task cards",
+    );
+    for (
+      let attempt = 0;
+      attempt < 30 && !document.querySelector(".dashboard-bar");
+      attempt++
+    )
+      await new Promise((resolve) => setTimeout(resolve, 75));
+    check(
+      !!document.querySelector(".dashboard-bar") &&
+        document
+          .querySelector(".dashboard-models")
+          .textContent.includes("fixture-model"),
+      "dashboard plots actual saved output by model",
+    );
     check(
       $("taskCard").contains($("progressError")) &&
         $("progressText").textContent.includes("1 / 2"),
@@ -285,7 +307,7 @@ void (async () => {
       await refresh(true);
       check(
         $("jobState").textContent === "Ожидание API" &&
-          $("activeProjectJob").textContent.includes("Ожидание API") &&
+          $("compactJobs").textContent.includes("Ожидание API") &&
           $("progressError").textContent.includes("повтор через") &&
           !$("mainAction").disabled,
         "API wait shows retry countdown and leaves pause available",
@@ -313,7 +335,8 @@ void (async () => {
         newTaskPayload = body;
         return { job: 99 };
       }
-      if (path === "job-log?id=99") return { text: "Review fixture log" };
+      if (path.startsWith("job-log?id=99"))
+        return { text: "Review fixture log" };
       const response = await originalRequest(path, body);
       if (path.startsWith("queue?")) selectedQueuePath = path;
       if (path.startsWith("state?")) {
@@ -348,6 +371,32 @@ void (async () => {
           $("jobLog").textContent.includes("Review fixture log"),
         "parallel selection targets the new task and its own queue and log",
       );
+      const reviewOptions = document.querySelector(
+        '.queue-options[data-job="99"]',
+      );
+      reviewOptions.open = true;
+      const action = (name) =>
+        [...reviewOptions.querySelectorAll("button")].find(
+          (item) => item.textContent === name,
+        );
+      await action("Журнал").onclick();
+      check(
+        $("fullJobLog").open &&
+          $("fullJobLog").textContent.includes("Review fixture log"),
+        "queue menu opens a separate journal for the selected task",
+      );
+      $("fullJobLog").close();
+      await action("Настроить").onclick();
+      check(
+        $("parallelQueueDialog").open &&
+          $("parallelQueueDialogTitle").textContent.includes("#99") &&
+          !$("parallelQueueDialog").querySelector(".parallel-tuning").hidden &&
+          [...parallelForm.querySelectorAll("label")].some((item) =>
+            item.textContent.includes("Лимит ответа, токенов"),
+          ),
+        "queue settings name tokens and show an independent configuration form",
+      );
+      $("parallelQueueDialog").close();
       await $("splitParallelQueue").onclick();
       check(
         $("parallelQueueDialog").open &&

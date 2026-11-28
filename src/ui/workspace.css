@@ -777,6 +777,114 @@ dialog.settings-popup[open] {
     grid-column: 1 / -1;
   }
 }
+.project-dashboard,
+.compact-jobs {
+  display: grid;
+  gap: 14px;
+}
+.dashboard-card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+}
+.dashboard-card h2 {
+  margin: 0 0 8px;
+}
+.dashboard-card progress {
+  display: block;
+  width: 100%;
+  margin: 10px 0;
+}
+.dashboard-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.dashboard-heading h2 {
+  flex: 1 1 auto;
+  margin: 0;
+}
+.dashboard-graph {
+  display: flex;
+  gap: 4px;
+  height: 118px;
+  align-items: end;
+  border-bottom: 1px solid var(--line);
+}
+.dashboard-bar {
+  flex: 1 1 0;
+  height: max(2px, var(--height));
+  border-radius: 3px 3px 0 0;
+  background: var(--accent);
+}
+.dashboard-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+.dashboard-models {
+  display: flex;
+  flex-wrap: wrap;
+  padding: 0;
+  margin: 12px 0 0;
+  list-style: none;
+  gap: 8px 18px;
+  font-size: 12px;
+}
+.dashboard-empty {
+  padding: 16px 0;
+}
+.compact-job {
+  display: grid;
+  gap: 7px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.compact-job[data-state="running"] .sub {
+  color: var(--accent);
+}
+.compact-job-error,
+.queue-diagnostic {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+.compact-job-error {
+  color: var(--red);
+}
+.queue-options {
+  margin: 0;
+  min-width: 88px;
+}
+.queue-options button {
+  margin: 3px;
+}
+.queue-parameters,
+.full-job-log {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.parallel-tuning {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+#fullJobLog,
+#projectPreparation {
+  width: 850px;
+}
+body[data-project-dashboard="yes"] #stats,
+body[data-project-dashboard="yes"] #projectActivity,
+body[data-project-dashboard="yes"] #projectSummary,
+body[data-project-dashboard="yes"] #breadcrumb,
+body[data-project-dashboard="yes"] .ux-page-title .ux-help,
+body[data-compact-tasks="yes"] #taskCard,
+body[data-compact-tasks="yes"] #setupCard {
+  display: none;
+}
 body #updatesBody > h3 {
   margin-top: 24px;
 }

@@ -143,8 +143,14 @@ def project_workflow(store, q, port):
 
 
 def job_log(store, q, port):
-    data = read_job_log(store, int(q["id"]))
+    data = read_job_log(store, int(q["id"]), max(1, min(2000, int(q.get("lines", 80)))))
     return data
+
+
+def translation_stats(store, q, port):
+    from translation_stats import overview
+
+    return overview(store, int(q["project"]), q.get("period", "hour"))
 
 
 def errors(store, q, port):
@@ -161,6 +167,7 @@ def knowledge(store, q, port):
 
 ROUTES = {
     "/api/project-workflow": project_workflow,
+    "/api/translation-stats": translation_stats,
     "/api/knowledge": knowledge,
     "/api/state": state,
     "/api/completed-projects": completed_projects,

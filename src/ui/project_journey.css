@@ -1,30 +1,3 @@
-body[data-project-guide="idle"] #stats,
-body[data-project-guide="task"] #stats,
-body[data-project-guide="idle"] #projectActivity,
-body[data-project-guide="task"] #projectActivity,
-body[data-project-guide="idle"] #projectSummary,
-body[data-project-guide="task"] #projectSummary {
-  display: none;
-}
-body[data-project-guide="idle"] > main {
-  grid-template-columns: 238px minmax(0, 1fr);
-}
-body[data-project-guide="idle"] .right {
-  display: none;
-}
-body[data-project-guide="task"] #setupCard {
-  display: none;
-}
-#projectJourney {
-  margin: 20px 0 24px;
-}
-#projectJourney > h2 {
-  margin: 0;
-  font-size: 20px;
-  color: var(--ink);
-  text-transform: none;
-  letter-spacing: normal;
-}
 .journey-boundary {
   background: #25271e;
   border: 1px solid #706540;
@@ -55,20 +28,8 @@ body[data-project-guide="task"] #setupCard {
   margin: 0 0 10px;
   font-size: 16px;
 }
-.journey-number {
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  width: 28px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  color: var(--accent);
-}
 .journey-step p {
   line-height: 1.5;
-  min-height: 44px;
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
@@ -91,27 +52,10 @@ body[data-project-guide="task"] #setupCard {
   flex-wrap: wrap;
   margin-top: 12px;
 }
-.journey-modules {
-  border-top: 1px solid var(--line);
-  padding-top: 14px;
-  margin-top: 20px;
-}
-.journey-module {
-  display: grid;
-  grid-template-columns: minmax(130px, 1fr) minmax(150px, 2fr);
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--line);
-  line-height: 1.5;
-}
-.journey-module span {
-  color: var(--muted);
-}
 .journey-run-summary {
   line-height: 1.6;
   white-space: pre-line;
 }
-#journeyRunModel,
 #journeyExportFile {
   width: 100%;
   margin: 8px 0;
