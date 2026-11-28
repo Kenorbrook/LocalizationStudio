@@ -74,6 +74,20 @@ void (async () => {
       );
     }
     check(signatures.size === 9, "nine distinct canvas treatments");
+    check(
+      getComputedStyle(document.querySelector(".dashboard-progress-card"))
+        .backgroundImage.includes("botanical.png"),
+      "garden illustration sits above the card texture",
+    );
+    appearance.value = "city";
+    await appearance.onchange();
+    const cityCard = document.querySelector(".dashboard-queue-card");
+    const cityTitle = cityCard.querySelector(".parallel-queue-title");
+    if (cityCard.clientWidth < 480 && innerWidth >= 1280)
+      check(cityTitle.clientWidth >= 160, "compact city queue gives the title its own row");
+    appearance.value = "garden";
+    await appearance.onchange();
+
     const savedPage = await fetch("/").then((response) => response.text());
     check(
       savedPage.includes('data-theme="garden"'),

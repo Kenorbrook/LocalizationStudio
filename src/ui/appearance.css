@@ -35,11 +35,11 @@ html[data-theme]:not([data-theme="studio"])
   :is(.brand, .center > h1, .dashboard-card h2) {
   font-family: var(--appearance-heading, inherit);
 }
-html[data-theme]:not([data-theme="studio"])
+:where(html[data-theme]:not([data-theme="studio"]))
   :is(button, input, select, textarea, .dashboard-card) {
   border-radius: var(--appearance-radius, 7px);
 }
-html[data-theme]:not([data-theme="studio"]) .dashboard-card {
+:where(html[data-theme]:not([data-theme="studio"])) .dashboard-card {
   background: var(--appearance-card, var(--panel));
   box-shadow: var(--appearance-shadow, none);
 }
@@ -371,5 +371,17 @@ html[data-theme="garden"] {
   }
   [data-theme="city"] .project-dashboard {
     grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  }
+  [data-theme="city"] .dashboard-queue-card {
+    container-type: inline-size;
+  }
+  @container (max-width: 480px) {
+    [data-theme="city"] .dashboard-queue-card .parallel-queue-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    [data-theme="city"] .dashboard-queue-card .parallel-queue-title {
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
   }
 }
