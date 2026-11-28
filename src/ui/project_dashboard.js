@@ -32,10 +32,15 @@
   ]);
   controls.append(element("h2", "Темп перевода"), period, unit);
   const graph = element("div", undefined, "dashboard-graph");
+  const plot = element("div", undefined, "dashboard-plot");
+  const grid = element("div", undefined, "dashboard-grid");
+  const axis = element("div", undefined, "dashboard-axis sub");
+  grid.setAttribute("aria-hidden", "true");
+  plot.append(axis, grid, graph);
   const scale = element("div", undefined, "sub dashboard-scale");
   const models = element("ul", undefined, "dashboard-models");
   const graphStatus = element("p", undefined, "sub");
-  graphCard.append(controls, graphStatus, graph, scale, models);
+  graphCard.append(controls, graphStatus, plot, scale, models);
   const queueCard = element("section", undefined, "dashboard-card");
   const queueHead = element("div", undefined, "dashboard-heading");
   const openQueue = element("button", "Открыть очередь");
@@ -85,18 +90,27 @@
       minute: "2-digit",
     });
   let hideBarTooltip;
+  function plotScale(maximum) {
+    const roughStep = Math.max(1, maximum / 4);
+    const power = 10 ** Math.floor(Math.log10(roughStep));
+    const step =
+      [1, 2, 5, 10].find((value) => value * power >= roughStep) * power;
+    return { step, top: Math.ceil(maximum / step) * step };
+  }
   function renderStats() {
     hideBarTooltip?.();
     hideBarTooltip = null;
     graph.replaceChildren();
+    axis.replaceChildren();
+    grid.replaceChildren();
     scale.replaceChildren();
     models.replaceChildren();
     const buckets = stats?.buckets || [];
     const key = unit.value;
     const values = buckets.map((item) => item[key]);
     const total = values.reduce((sum, value) => sum + value, 0);
-    const max = Math.max(1, ...values);
-    graph.hidden = scale.hidden = !total;
+    const maximum = Math.max(0, ...values);
+    plot.hidden = scale.hidden = !total;
     setText(
       graphStatus,
       stats?.error ||
@@ -111,11 +125,26 @@
           : "Загрузка статистики…"),
     );
     if (!total) return;
+    const { step, top } = plotScale(maximum);
+    const width = Math.max(2, number(top).length) + "ch";
+    plot.style.setProperty("--axis-width", width);
+    scale.style.setProperty("--axis-width", width);
+    for (let value = 0; value <= top; value += step) {
+      const level = (100 * value) / top + "%";
+      const label = element("span", number(value));
+      label.style.bottom = level;
+      axis.append(label);
+      if (value) {
+        const line = element("span");
+        line.style.bottom = level;
+        grid.append(line);
+      }
+    }
     const series = Object.keys(stats.models).sort();
     series.forEach(modelColor);
     for (const [i, bucket] of buckets.entries()) {
       const bar = element("div", undefined, "dashboard-bar");
-      bar.style.setProperty("--height", (100 * values[i]) / max + "%");
+      bar.style.setProperty("--height", (100 * values[i]) / top + "%");
       const end = Math.min(stats.end, bucket.at + stats.bucket_seconds);
       const breakdown = [
         time(bucket.at) + "–" + time(end) + " · " + number(values[i]),

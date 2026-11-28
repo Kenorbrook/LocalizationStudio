@@ -63,6 +63,23 @@ void (async () => {
     );
     latestBar.dispatchEvent(new MouseEvent("mouseleave"));
     check($("contextTooltip").hidden, "chart tooltip closes on mouse leave");
+    const ticks = () =>
+      [...document.querySelectorAll(".dashboard-axis span")].map(
+        (label) => label.textContent,
+      );
+    const units = document.querySelector('[aria-label="Единица измерения"]');
+    check(
+      ticks()[0] === "0" &&
+        +ticks().at(-1) >= 4 &&
+        document.querySelectorAll(".dashboard-grid span").length ===
+          ticks().length - 1,
+      "word chart shows labeled horizontal grid lines",
+    );
+    units.value = "lines";
+    units.onchange();
+    check(ticks().join(",") === "0,1,2", "axis rescales for the selected unit");
+    units.value = "words";
+    units.onchange();
     check(
       $("taskCard").contains($("progressError")) &&
         $("progressText").textContent.includes("1 / 2"),

@@ -861,11 +861,40 @@ dialog.settings-popup[open] {
   margin: 0;
 }
 .dashboard-graph {
+  position: relative;
   display: flex;
   gap: 4px;
   height: 118px;
   align-items: end;
   border-bottom: 1px solid var(--line);
+}
+.dashboard-plot {
+  position: relative;
+  padding-left: calc(var(--axis-width, 2ch) + 12px);
+  margin-top: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.dashboard-axis,
+.dashboard-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.dashboard-axis {
+  width: var(--axis-width, 2ch);
+}
+.dashboard-axis span {
+  position: absolute;
+  right: 0;
+  transform: translateY(50%);
+}
+.dashboard-grid {
+  left: calc(var(--axis-width, 2ch) + 12px);
+}
+.dashboard-grid span {
+  position: absolute;
+  width: 100%;
+  border-top: 1px solid var(--line);
 }
 .dashboard-bar {
   flex: 1 1 0;
@@ -891,7 +920,8 @@ dialog.settings-popup[open] {
 .dashboard-scale {
   display: flex;
   justify-content: space-between;
-  margin-top: 6px;
+  margin-top: 10px;
+  padding-left: calc(var(--axis-width, 2ch) + 12px);
 }
 .dashboard-models {
   display: flex;
