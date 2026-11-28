@@ -837,6 +837,20 @@ dialog.settings-popup[open] {
   margin-right: 8px;
   color: var(--muted);
 }
+.queue-chain-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 24px;
+}
+.queue-chain-identity {
+  flex: 0 1 24rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.queue-chain-row .queue-parameters {
+  flex: 1 1 28rem;
+}
 .parallel-form label {
   display: grid;
   gap: 6px;

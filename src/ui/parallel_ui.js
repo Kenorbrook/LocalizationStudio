@@ -367,25 +367,6 @@ const projectQueues = (() => {
         );
         const controls = element("div", undefined, "queue-row-controls");
         const parameters = JSON.parse(job.settings || "{}");
-        const summary = element("div", undefined, "queue-parameters sub");
-        summary.append(
-          ...[
-            (parameters.source_language || "English") +
-              " → " +
-              (parameters.target_language || "Russian"),
-            "Контекст " +
-              (parameters.context || 8192).toLocaleString("ru-RU") +
-              " токенов",
-            "Лимит ответа " +
-              (parameters.max_output || 1200).toLocaleString("ru-RU") +
-              " токенов",
-            "Соседние фразы " +
-              (parameters.context_before ?? 12) +
-              " до / " +
-              (parameters.context_after ?? 8) +
-              " после",
-          ].map((label) => element("span", label)),
-        );
         const diagnostics = element(
           "div",
           undefined,
@@ -423,7 +404,7 @@ const projectQueues = (() => {
         controls.append(more);
         row.dataset.job = job.id;
         title.title = title.textContent;
-        row.append(title, detail, controls, summary);
+        row.append(title, detail, controls, queueParameters(parameters));
         if (diagnostics.childElementCount) row.append(diagnostics);
         return row;
       }),

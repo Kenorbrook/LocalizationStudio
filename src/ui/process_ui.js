@@ -742,11 +742,24 @@ studioLifecycle.register("render", "previewRender", (...args) => {
   attachRecordPreviews();
 });
 
+function queueParameters(settings) {
+  const summary = element("div", undefined, "queue-parameters sub");
+  summary.append(
+    ...[
+      `${settings.source_language || "English"} → ${settings.target_language || "Russian"}`,
+      `Контекст ${(settings.context || 8192).toLocaleString("ru-RU")} токенов`,
+      `Лимит ответа ${(settings.max_output || 1200).toLocaleString("ru-RU")} токенов`,
+      `Соседние фразы ${settings.context_before ?? 12} до / ${settings.context_after ?? 8} после`,
+    ].map((label) => element("span", label)),
+  );
+  return summary;
+}
+
 const chainPanel = element("section");
 chainPanel.id = "jobChain";
 projectTools.before(chainPanel);
 let chainVersion = "";
-studioLifecycle.register("refresh", "chainRefresh", async (context) => {
+studioLifecycle.register("refresh", "chainRefresh", () => {
   const jobs = (studioState.snapshot?.jobs || [])
     .filter((j) =>
       ["running", "queued", "paused", "waiting", "held"].includes(j.state),
@@ -764,7 +777,7 @@ studioLifecycle.register("refresh", "chainRefresh", async (context) => {
   chainPanel.append(element("h2", "Очереди обработки · " + jobs.length));
   jobs.forEach((j, i) => {
     const s = JSON.parse(j.settings || "{}"),
-      card = element("div", undefined, "error"),
+      card = element("div", undefined, "error queue-chain-row"),
       title = element(
         "strong",
         `${i + 1}. ${s._retry_origin ? "Повтор ошибок" : "Основная очередь"} · №${j.id} · ${jobLabels[j.state] || j.state}`,
@@ -773,13 +786,10 @@ studioLifecycle.register("refresh", "chainRefresh", async (context) => {
         "div",
         `${{ translate: "Перевод", review: "Редактура", cloud: "Проверка", analyze: "Анализ проекта" }[j.stage]} · ${(j.provider === "cloud" ? s.cloud_model : j.provider === "mcp" ? s.mcp_model_hint : s.model) || "MCP"} · ${j.provider} · ${j.done}/${j.total} строк`,
         "sub",
-      ),
-      parameters = element(
-        "div",
-        `Контекст ${s.context || 8192} · ответ ${s.max_output || 1200} · соседей ${s.context_before ?? 12} до / ${s.context_after ?? 8} после · ${s.source_language || "English"} → ${s.target_language || "Russian"}`,
-        "sub hint",
       );
-    card.append(title, description, parameters);
+    const identity = element("div", undefined, "queue-chain-identity");
+    identity.append(title, description);
+    card.append(identity, queueParameters(s));
     chainPanel.append(card);
   });
 });

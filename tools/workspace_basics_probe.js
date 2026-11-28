@@ -443,6 +443,28 @@ void (async () => {
           $("jobLog").textContent.includes("Review fixture log"),
         "parallel selection targets the new task and its own queue and log",
       );
+      showView("home");
+      const chain = $("jobChain");
+      const chainRow = chain.querySelector(".queue-chain-row");
+      const identity = chainRow.querySelector(".queue-chain-identity");
+      const parameters = chainRow.querySelector(".queue-parameters");
+      chain.style.width = "960px";
+      check(
+        identity.getBoundingClientRect().width > 0 &&
+          parameters.getBoundingClientRect().left >= identity.getBoundingClientRect().right &&
+          parameters.children.length === 4 &&
+          parameters.textContent.includes("токенов") &&
+          !chainRow.querySelector(".hint"),
+        "processing queues show the four parameter groups next to the model",
+      );
+      chain.style.width = "330px";
+      check(
+        parameters.getBoundingClientRect().top >= identity.getBoundingClientRect().bottom &&
+          chainRow.scrollWidth <= chainRow.clientWidth,
+        "processing queue parameters wrap without horizontal overflow",
+      );
+      chain.style.width = "";
+      showView("queue");
       const queueRow = document.querySelector('.parallel-queue-row[data-job="99"]');
       const reviewTitle = queueRow.querySelector(".parallel-queue-title");
       const queueList = queueRow.parentElement;
