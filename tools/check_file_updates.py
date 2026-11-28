@@ -90,6 +90,7 @@ def main():
                 fixture / name,
                 ignore=shutil.ignore_patterns("__pycache__"),
             )
+        shutil.copytree(ROOT / "build/plugin-seeds", fixture / "build/plugin-seeds")
         (fixture / "src/version.py").write_text(
             f'VERSION="0.0.0"\nREPOSITORY="{REPOSITORY}"\n'
         )
@@ -162,7 +163,7 @@ def main():
             """setTimeout(()=>{(async()=>{try{
 const until=async phase=>{for(let i=0;i<240;i++){const state=await window.pywebview.api.get_update_state();displayUpdateState(state);if(state.phase==='error')throw Error(state.message);if(state.phase===phase)return state;await new Promise(r=>setTimeout(r,500));}throw Error('timeout');};
 openAppSettings();await window.pywebview.api.check_updates();await until('available');await window.pywebview.api.download_update();const state=await until('ready');
-window.__featureProbe={passed:state.mode==='files'&&state.reused_files>0,state,transfer:$('updateTransfer').textContent};
+window.__featureProbe={passed:state.mode==='files'&&state.reused_files>0&&$('updateTransfer').hidden&&$('updateTransfer').textContent===''&&$('updateMessage').hidden&&!$('installUpdate').hidden,state,transfer:$('updateTransfer').textContent};
 await new Promise(r=>setTimeout(r,22000));
 await window.pywebview.api.install_update();
 }catch(error){window.__featureProbe={passed:false,error:error.message};}})();},0);""",
@@ -187,10 +188,18 @@ await window.pywebview.api.install_update();
         )
 
         def probe_ready():
-            if gui.poll() is not None:
-                raise RuntimeError("Neutral GUI exited early")
             if report.exists() and report.stat().st_size:
                 return json.loads(report.read_text(encoding="utf-8"))
+            if gui.poll() is not None:
+                log = data / "test-logs/desktop.log"
+                detail = (
+                    log.read_text(encoding="utf-8", errors="replace")
+                    if log.exists()
+                    else ""
+                )
+                raise RuntimeError(
+                    f"Neutral GUI exited early ({gui.returncode})\n{detail[-4000:]}"
+                )
 
         result = wait_until(probe_ready, 150)
         assert result["passed"], result

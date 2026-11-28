@@ -33,11 +33,9 @@ def main():
     args = parser.parse_args()
     plan = read_plan(args.plan)
     status = Path(args.plan).with_name("result.json")
-    changed = False
     try:
         wait_for_exit(plan["gui_pid"])
         replace_application(plan)
-        changed = True
         status.write_text(
             json.dumps({"installed": True, "version": plan["version"]}),
             encoding="utf-8",
@@ -49,9 +47,7 @@ def main():
         )
         ctypes.windll.user32.MessageBoxW(
             None,
-            "Обновление не установлено. "
-            + str(error)
-            + "\nПредыдущая версия сохранена.",
+            "Обновление не установлено. " + str(error),
             "Localization Studio",
             0x10,
         )

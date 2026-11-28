@@ -45,7 +45,7 @@ class UpdateController:
             "phase": "idle",
             "current": VERSION,
             "repository": REPOSITORY,
-            "message": "Проверка обновлений ещё не выполнялась",
+            "message": "",
             "downloaded": 0,
             "total": 0,
             "supported": self.frozen
@@ -81,9 +81,9 @@ class UpdateController:
             self.state.update(
                 phase=phase,
                 message={
-                    "checking": "Проверяем GitHub Releases…",
-                    "downloading": "Скачиваем и проверяем сборку…",
-                    "installing": "Сохраняем очередь и готовим установку…",
+                    "checking": "Проверяем обновления…",
+                    "downloading": "Скачиваем обновление…",
+                    "installing": "Устанавливаем обновление…",
                 }[phase],
             )
 
@@ -160,7 +160,7 @@ class UpdateController:
                 archive.unlink(missing_ok=True)
             self._set(
                 phase="ready",
-                message="Готово к установке",
+                message="",
             )
 
         return self._launch("downloading", action)
@@ -238,7 +238,8 @@ class UpdateController:
                             "UPDATE jobs SET state='paused' WHERE state IN ('running','queued')"
                         )
                         db.execute("UPDATE jobs SET state='held' WHERE state='waiting'")
-                self._set(message="Завершаем текущие запросы…")
+                if rows:
+                    self._set(message="Ждём завершения текущих запросов…")
                 from updater import wait_for_exit
                 from project_lifecycle import matches_worker
 
@@ -272,6 +273,7 @@ class UpdateController:
                         )
                         if matches_worker(info, self.store, row["id"]):
                             wait_for_exit(row["pid"], 180)
+                self._set(message="Устанавливаем обновление…")
                 if self._dirty():
                     raise ValueError(
                         "Появились несохранённые правки; установка отложена"

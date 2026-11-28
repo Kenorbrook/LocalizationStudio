@@ -265,11 +265,35 @@ void (async () => {
       );
     }
     const previousUpdateState = await native.get_update_state();
-    displayUpdateState({
+    const downloadState = {
       ...previousUpdateState,
       latest: "99.0.0",
+      phase: "downloading",
+      mode: "files",
+      message: "Скачиваем обновление…",
+      downloaded: 1000000,
+      total: 2000000,
+      reused_files: 132,
+      reused_bytes: 100000000,
+    };
+    displayUpdateState(downloadState);
+    check(
+      !$("updateTransfer").hidden &&
+        $("updateTransfer").textContent === "1 / 2 МБ",
+      "download cells show only transferred and total size",
+    );
+    displayUpdateState({
+      ...downloadState,
+      message: "",
       phase: "ready",
     });
+    check(
+      $("updateTransfer").hidden &&
+        $("updateTransfer").textContent === "" &&
+        $("updateMessage").hidden &&
+        !$("installUpdate").hidden,
+      "completed download only shows the install action",
+    );
     await $("installUpdate").onclick();
     check(
       $("infoDialog").open &&

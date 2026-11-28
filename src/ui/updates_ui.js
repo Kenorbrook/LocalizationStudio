@@ -151,7 +151,8 @@ function displayUpdateState(state) {
   footerUpdate.disabled = ["checking", "downloading", "installing"].includes(
     state.phase,
   );
-  setText(updateMessage, state.message);
+  updateMessage.hidden = !state.message;
+  setText(updateMessage, state.message || "");
   const busy = ["checking", "downloading", "installing"].includes(state.phase);
   checkUpdates.disabled = busy;
   downloadUpdate.hidden =
@@ -162,18 +163,22 @@ function displayUpdateState(state) {
   releaseNotes.hidden = !state.notes;
   setText(notes, state.notes || "");
   updateProgress.hidden = state.phase !== "downloading";
-  updateProgress.max = state.total || 1;
-  updateProgress.value = state.downloaded || 0;
-  updateTransfer.hidden = !["downloading", "ready"].includes(state.phase);
+  if (state.total > 0) {
+    updateProgress.max = state.total;
+    updateProgress.value = state.downloaded || 0;
+  } else {
+    updateProgress.removeAttribute("value");
+  }
+  updateTransfer.hidden = state.phase !== "downloading" || !(state.total > 0);
   const megabytes = (value) =>
     ((value || 0) / 1000000).toLocaleString("ru-RU", {
       maximumFractionDigits: 1,
     });
   setText(
     updateTransfer,
-    state.mode === "files"
-      ? `Скачано ${megabytes(state.downloaded)} из ${megabytes(state.total)} МБ · Без повторной загрузки: ${state.reused_files || 0} файлов (${megabytes(state.reused_bytes)} МБ)`
-      : `Скачано ${megabytes(state.downloaded)} из ${megabytes(state.total)} МБ`,
+    updateTransfer.hidden
+      ? ""
+      : `${megabytes(state.downloaded)} / ${megabytes(state.total)} МБ`,
   );
   for (const [key, input] of Object.entries(updateOptions))
     input.checked = !!state.preferences[key];
@@ -225,7 +230,10 @@ window.addEventListener("DOMContentLoaded", () => {
   refreshUpdates().catch((error) => toast(error.message));
   setInterval(() => {
     refreshUpdates().catch((error) => {
-      if (updatesDialog.open) setText(updateMessage, error.message);
+      if (updatesDialog.open) {
+        updateMessage.hidden = false;
+        setText(updateMessage, error.message);
+      }
     });
   }, 2500);
 });

@@ -156,9 +156,7 @@ def stage_files(
     files = index["files"]
     pending = {}
     reused = reused_bytes = 0
-    progress(
-        message="Проверяем установленные файлы…", downloaded=0, total=0, reused_files=0
-    )
+    progress(message="Подготовка загрузки…", downloaded=0, total=0, reused_files=0)
     for name, entry in files.items():
         target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -185,11 +183,7 @@ def stage_files(
         progress(downloaded=received, total=total)
 
     progress(
-        message=(
-            "Скачиваем изменённые файлы…"
-            if total
-            else "Все файлы уже есть; проверяем сборку…"
-        ),
+        message=("Скачиваем обновление…" if total else "Проверяем обновление…"),
         total=total,
         reused_files=reused,
         reused_bytes=reused_bytes,

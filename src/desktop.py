@@ -158,7 +158,7 @@ def main():
                 updates._set(
                     phase="current" if result.get("installed") else "error",
                     message=(
-                        "Обновлено до версии " + updates.snapshot()["current"]
+                        ""
                         if result.get("installed")
                         else "Обновление не установлено: "
                         + result.get("error", "неизвестная ошибка")
