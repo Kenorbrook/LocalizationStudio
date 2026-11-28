@@ -91,8 +91,12 @@ def main():
                 ignore=shutil.ignore_patterns("__pycache__"),
             )
         shutil.copytree(ROOT / "build/plugin-seeds", fixture / "build/plugin-seeds")
+        major, minor, patch = map(int, VERSION.split("."))
+        if patch < 1:
+            raise ValueError("Update fixture requires a previous patch version")
+        previous = f"{major}.{minor}.{patch - 1}"
         (fixture / "src/version.py").write_text(
-            f'VERSION="0.0.0"\nREPOSITORY="{REPOSITORY}"\n'
+            f'VERSION="{previous}"\nREPOSITORY="{REPOSITORY}"\n'
         )
         feed = fixture / "src/update_feed.py"
         feed.write_text(
