@@ -340,7 +340,7 @@ export function create(api) {
   }
   const sources = element("section", undefined, "plugin-inline-group");
   sources.id = "hermesSources";
-  const sourceTitle = element("h3", "Дополнительный отчёт Hermes");
+  const sourceTitle = element("h3", "Исследование файлов");
   sourceTitle.append(
     workspaceUi.help(
       "Hermes читает структуру и ограниченные фрагменты файлов текущего проекта. Отчёт содержит наблюдения и предположения; агент не меняет игру и не получает терминал.",
@@ -369,14 +369,14 @@ export function create(api) {
     openReport,
   );
   sources.append(sourceTitle, sourceActions, sourceReason);
-  api.mount("project.settings.files", sources);
+  api.projectTab("research", "Hermes", sources);
   const overviewSources = element("section", undefined, "ux-overview-card");
   overviewSources.append(element("h2", "Отчёты помощника"));
   button(
     "projectSources",
     "Исследование файлов с Hermes",
     overviewSources,
-    () => workspaceUi.openSettings("files"),
+    () => workspaceUi.openSettings("hermes-research"),
   );
   api.mount("project.overview", overviewSources);
 

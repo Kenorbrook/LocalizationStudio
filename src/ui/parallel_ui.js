@@ -41,7 +41,13 @@ const projectQueues = (() => {
   const cancel = element("button", "Отмена");
   cancel.type = "button";
   cancel.onclick = () => dialog.close();
-  actions.append(submit, cancel);
+  actions.append(
+    workspaceUi.disabledReason(
+      submit,
+      () => status.textContent || "Дождитесь загрузки исполнителей",
+    ),
+    cancel,
+  );
   function field(label, input) {
     const box = element("label");
     box.append(element("span", label), input);
@@ -56,11 +62,84 @@ const projectQueues = (() => {
   const sourceField = field("Исходная очередь", source);
   const modelField = field("Модель API", model);
   const countField = field("", count);
+  const languagePair = element("div", undefined, "parallel-tuning");
+  const originalLanguage = element("select");
+  const translatedLanguage = element("select");
+  originalLanguage.id = "queueSourceLanguage";
+  translatedLanguage.id = "queueTargetLanguage";
+  languagePair.append(
+    field("Язык оригинала", originalLanguage),
+    field("Язык перевода", translatedLanguage),
+  );
+  const languages = Object.entries({
+    English: "Английский",
+    Russian: "Русский",
+    German: "Немецкий",
+    French: "Французский",
+    Spanish: "Испанский",
+    Italian: "Итальянский",
+    Japanese: "Японский",
+    Korean: "Корейский",
+    Chinese: "Китайский",
+    "Simplified Chinese": "Китайский (упрощённый)",
+    "Traditional Chinese": "Китайский (традиционный)",
+    Portuguese: "Португальский",
+    Ukrainian: "Украинский",
+    Belarusian: "Белорусский",
+    Polish: "Польский",
+    Czech: "Чешский",
+    Slovak: "Словацкий",
+    Turkish: "Турецкий",
+    Arabic: "Арабский",
+    Hebrew: "Иврит",
+    Hindi: "Хинди",
+    Dutch: "Нидерландский",
+    Swedish: "Шведский",
+    Norwegian: "Норвежский",
+    Danish: "Датский",
+    Finnish: "Финский",
+    Greek: "Греческий",
+    Hungarian: "Венгерский",
+    Romanian: "Румынский",
+    Bulgarian: "Болгарский",
+    Serbian: "Сербский",
+    Croatian: "Хорватский",
+    Indonesian: "Индонезийский",
+    Thai: "Тайский",
+    Vietnamese: "Вьетнамский",
+    Persian: "Персидский",
+    Armenian: "Армянский",
+    Georgian: "Грузинский",
+    Kazakh: "Казахский",
+    Uzbek: "Узбекский",
+    Latin: "Латынь",
+  }).sort((a, b) => a[1].localeCompare(b[1], "ru"));
+  function chooseLanguage(select, value, fallback) {
+    const previous = String(value || fallback).trim() || fallback;
+    select.replaceChildren(
+      ...languages.map(([id, label]) => option(id, label)),
+    );
+    const canonical = languages.find(([id, label]) =>
+      [id.toLowerCase(), label.toLowerCase()].includes(previous.toLowerCase()),
+    );
+    if (!canonical)
+      select.append(option(previous, previous + " (сохранённое значение)"));
+    select.value = canonical?.[0] || previous;
+  }
+  const languageNote = element(
+    "p",
+    "В проекте у каждой строки один перевод. Другой язык этой очереди может дать смешанный результат.",
+    "sub",
+  );
+  languageNote.hidden = true;
+  translatedLanguage.onchange = () =>
+    (languageNote.hidden = translatedLanguage.value === defaultTarget);
   const tuning = element("div", undefined, "parallel-tuning");
   const inputs = Object.fromEntries(
     [
       ["context", "Окно контекста, токенов", 1024, 131072, 8192],
       ["max_output", "Лимит ответа, токенов", 100, 100000, 1200],
+      ["max_calls", "Запросов к API или MCP за запуск", 1, 1000000, 1000],
       ["context_before", "Фраз перед строкой", 0, 100, 12],
       ["context_after", "Фраз после строки", 0, 100, 8],
       ["run_lines", "Лимит строк (0 — без лимита)", 0, 1000000, 0],
@@ -76,6 +155,8 @@ const projectQueues = (() => {
       return [key, { input, fallback }];
     }),
   );
+  const tuningDetails = element("details");
+  tuningDetails.append(element("summary", "Контекст и лимиты"), tuning);
   form.append(
     stageField,
     sourceField,
@@ -85,7 +166,9 @@ const projectQueues = (() => {
     modelField,
     discover,
     suggestions,
-    tuning,
+    languagePair,
+    languageNote,
+    tuningDetails,
     status,
     actions,
   );
@@ -219,10 +302,15 @@ const projectQueues = (() => {
         const edit = element("button", "Настроить");
         edit.disabled =
           job.worker_active ||
-          !["paused", "waiting", "held"].includes(job.state) ||
-          job.provider === "mcp";
+          !["paused", "waiting", "held"].includes(job.state);
         edit.onclick = guard(() => open(false, job));
-        options.append(edit);
+        options.append(
+          workspaceUi.disabledReason(edit, () =>
+            job.worker_active || job.state === "running"
+              ? "Приостановите задачу и дождитесь завершения запроса"
+              : "Подождите, пока очередь запустится",
+          ),
+        );
         if (job.state === "waiting") {
           const startNow = element("button", "Запустить сейчас");
           startNow.onclick = guard(async () => {
@@ -321,6 +409,8 @@ const projectQueues = (() => {
   let connections = [];
   let busy = false;
   let openVersion = 0;
+  let defaultTarget = "";
+  let mcp = [];
   function chosenConnection() {
     return connections.find((item) => executor.value === "api:" + item.id);
   }
@@ -329,6 +419,8 @@ const projectQueues = (() => {
     modelField.hidden = !connection;
     discover.hidden = !connection;
     model.required = !!connection;
+    inputs.max_calls.input.closest("label").hidden =
+      !connection && !executor.value.startsWith("mcp:");
     model.value =
       prefill || (connection?.models?.length === 1 ? connection.models[0] : "");
     suggestions.replaceChildren(
@@ -342,6 +434,14 @@ const projectQueues = (() => {
     );
     if (selected && splitting)
       count.max = Math.max(0, selected.total - selected.done - 1);
+    if (selected && splitting)
+      loadLanguages(JSON.parse(selected.settings || "{}"));
+  }
+  function loadLanguages(config) {
+    chooseLanguage(originalLanguage, config.source_language, "English");
+    chooseLanguage(translatedLanguage, config.target_language, "Russian");
+    defaultTarget = translatedLanguage.value;
+    languageNote.hidden = true;
   }
   source.onchange = changeSource;
   discover.onclick = async () => {
@@ -367,32 +467,37 @@ const projectQueues = (() => {
     const version = ++openVersion;
     splitting = split;
     editing = job;
-    tuning.hidden = !job;
+    tuningDetails.open = !!job;
     setText(
       $("parallelQueueDialogTitle"),
       job
         ? "Настройки очереди #" + job.id
         : split
           ? "Разделить очередь"
-          : "Новая задача",
+          : initialStage === "analyze"
+            ? "Собрать персонажей и термины"
+            : "Новая задача",
     );
     setText(submit, job ? "Сохранить" : "Запустить");
-    stageField.hidden = split || !!job;
+    stageField.hidden = split || !!job || initialStage === "analyze";
     sourceField.hidden = !split || !!job;
-    file.parentElement.hidden = !!job;
-    countField.hidden = !!job;
+    file.parentElement.hidden = !!job || initialStage === "analyze";
+    countField.hidden = !!job || initialStage === "analyze";
+    languageNote.hidden = true;
     stage.replaceChildren(
       option("translate", "Перевести новые строки"),
       option("review", "Редактировать готовый перевод"),
       option("cloud", "Проверить перевод через API"),
+      ...(initialStage === "analyze" || job?.stage === "analyze"
+        ? [option("analyze", "Собрать персонажей и термины")]
+        : []),
     );
-    stage.value =
-      job?.stage === "analyze"
-        ? "translate"
-        : job?.stage || (split ? "translate" : initialStage);
+    stage.value = job?.stage || (split ? "translate" : initialStage);
     const config = job ? JSON.parse(job.settings || "{}") : null;
+    const defaults = config || settings();
+    loadLanguages(defaults);
     for (const [key, { input, fallback }] of Object.entries(inputs))
-      input.value = config?.[key] ?? fallback;
+      input.value = defaults[key] ?? fallback;
     source.replaceChildren(
       ...splitQueues().map((job) => option(job.id, queueTitle(job))),
     );
@@ -415,13 +520,15 @@ const projectQueues = (() => {
     changeSource();
     submit.disabled = true;
     connections = [];
+    mcp = [];
     executor.replaceChildren(option("", "Загрузка…"));
     renderExecutor();
     message("");
     dialog.showModal();
-    const [local, cloud] = await Promise.allSettled([
+    const [local, cloud, clients] = await Promise.allSettled([
       request("models"),
       window.pywebview?.api?.cloud_connections?.(),
+      request("connections"),
     ]);
     if (
       !dialog.open ||
@@ -429,10 +536,16 @@ const projectQueues = (() => {
       version !== openVersion
     )
       return;
-    connections = (cloud.value || []).filter(
+    const projectConfig = JSON.parse(
+      studioState.snapshot.projects.find((p) => p.id === owner)?.settings ||
+        "{}",
+    );
+    const canUseApi =
+      projectConfig.cloud_enabled === true || job?.provider === "cloud";
+    connections = (canUseApi ? cloud.value || [] : []).filter(
       (item) => !item.projects || item.projects.includes(owner),
     );
-    const defaults = config || settings();
+    mcp = (clients.value?.mcp || []).filter((client) => client.sampling);
     executor.replaceChildren(
       option("", "Выберите исполнителя"),
       ...(local.value?.models || []).map((name) =>
@@ -441,11 +554,16 @@ const projectQueues = (() => {
       ...connections.map((item) =>
         option("api:" + item.id, "API · " + item.name),
       ),
+      ...mcp.map((item) =>
+        option("mcp:" + item.session, "MCP · " + item.client),
+      ),
     );
     const preferred =
       (job?.provider || defaults.execution_kind) === "cloud"
         ? "api:" + defaults.cloud_connection
-        : "local:" + defaults.model;
+        : (job?.provider || defaults.execution_kind) === "mcp"
+          ? "mcp:" + defaults.mcp_session
+          : "local:" + defaults.model;
     if (
       job?.provider === "local" &&
       defaults.model &&
@@ -462,9 +580,14 @@ const projectQueues = (() => {
     submit.disabled = executor.options.length < 2;
     if (submit.disabled)
       message(
-        local.value?.online === false
-          ? "Ollama недоступна. Запустите Ollama или добавьте API-ключ."
-          : "Нет установленных моделей или доступных API-ключей",
+        !canUseApi &&
+          (cloud.value || []).some(
+            (item) => !item.projects || item.projects.includes(owner),
+          )
+          ? "Разрешите облачные модели в настройках проекта или запустите Ollama."
+          : local.value?.online === false
+            ? "Ollama недоступна. Запустите Ollama или добавьте API-ключ."
+            : "Нет установленных моделей или доступных API-ключей",
       );
   }
   newTask.onclick = guard(() =>
@@ -484,18 +607,21 @@ const projectQueues = (() => {
     if (!executor.value) return message("Выберите исполнителя");
     if (splitting && !+source.value)
       return message("Выберите исходную очередь");
-    const provider = connection ? "cloud" : "local";
-    if (stage.value === "cloud" && !connection)
-      return message("Выберите API-ключ");
+    const client = mcp.find((item) => executor.value === "mcp:" + item.session);
+    const provider = connection ? "cloud" : client ? "mcp" : "local";
+    if (stage.value === "cloud" && provider === "local")
+      return message("Выберите API-ключ или MCP-клиент");
+    if (stage.value === "analyze" && client)
+      return message("Выберите локальную модель или API-ключ");
+    if (originalLanguage.value === translatedLanguage.value)
+      return message("Выберите разные языки оригинала и перевода");
     const values = {
-      ...(editing
-        ? Object.fromEntries(
-            Object.entries(inputs).map(([key, { input }]) => [
-              key,
-              +input.value,
-            ]),
-          )
-        : settings()),
+      ...(!editing ? settings() : {}),
+      ...Object.fromEntries(
+        Object.entries(inputs).map(([key, { input }]) => [key, +input.value]),
+      ),
+      source_language: originalLanguage.value,
+      target_language: translatedLanguage.value,
       execution_kind: provider,
       provider,
     };
@@ -504,6 +630,11 @@ const projectQueues = (() => {
         endpoint: connection.endpoint,
         cloud_connection: connection.id,
         cloud_model: model.value.trim(),
+      });
+    else if (client)
+      Object.assign(values, {
+        mcp_session: client.session,
+        mcp_model_hint: client.model || "",
       });
     else
       Object.assign(values, {
@@ -532,16 +663,19 @@ const projectQueues = (() => {
         stage.value === "translate" &&
         values.analyze_before_translate &&
         !+count.value;
-      const result = await request(analyzeFirst ? "job" : "parallel-job", {
-        project,
-        stage: stage.value,
-        provider,
-        settings: values,
-        split_from: splitting ? +source.value : 0,
-        file: +file.value || null,
-        take: +count.value,
-        persist_settings: false,
-      });
+      const result = await request(
+        analyzeFirst || stage.value === "analyze" ? "job" : "parallel-job",
+        {
+          project,
+          stage: stage.value,
+          provider,
+          settings: values,
+          split_from: splitting ? +source.value : 0,
+          file: +file.value || null,
+          take: +count.value,
+          persist_settings: false,
+        },
+      );
       studioState.selectedJobs.set(project, result.job);
       dialog.close();
       await refresh();

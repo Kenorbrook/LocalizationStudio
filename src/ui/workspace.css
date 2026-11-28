@@ -552,6 +552,31 @@ body .ux-close {
   align-items: center;
   margin: 0 0 8px;
 }
+.settings-action-row {
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+body .ux-settings-group h3 .ux-help {
+  margin-left: 6px;
+}
+.disabled-reason {
+  display: inline-flex;
+}
+.disabled-reason button:disabled {
+  pointer-events: none;
+}
+body .ux-tooltip.disabled-explanation {
+  border-color: var(--red);
+  color: var(--red);
+}
+#importExtra label {
+  display: block;
+  margin: 10px 0 5px;
+}
+#importExtra textarea {
+  width: 100%;
+}
 .ux-field-caption label {
   color: #c1d0d7;
   font-size: 13px;

@@ -11,6 +11,7 @@ const workspaceUi = (() => {
   let helpOwner = null;
   function hideHelp() {
     tooltip.hidden = true;
+    tooltip.classList.remove("disabled-explanation");
     helpOwner?.removeAttribute("aria-describedby");
     helpOwner = null;
   }
@@ -52,6 +53,33 @@ const workspaceUi = (() => {
       }
     };
     return button;
+  }
+  function disabledReason(button, reason) {
+    const wrapper = element("span", undefined, "disabled-reason");
+    wrapper.append(button);
+    const sync = () => {
+      wrapper.tabIndex = button.disabled ? 0 : -1;
+      if (!button.disabled && helpOwner === wrapper) hideHelp();
+    };
+    const reveal = () => {
+      if (!button.disabled) return;
+      showHelp(wrapper, reason);
+      tooltip.classList.add("disabled-explanation");
+    };
+    wrapper.onmouseenter = wrapper.onfocus = reveal;
+    wrapper.onmouseleave = wrapper.onblur = hideHelp;
+    wrapper.onkeydown = (event) => {
+      if (event.key === "Escape" && helpOwner === wrapper) {
+        hideHelp();
+        event.stopPropagation();
+      }
+    };
+    new MutationObserver(sync).observe(button, {
+      attributes: true,
+      attributeFilter: ["disabled"],
+    });
+    sync();
+    return wrapper;
   }
   addEventListener("resize", hideHelp);
   document.addEventListener("scroll", hideHelp, true);
@@ -170,48 +198,57 @@ const workspaceUi = (() => {
   }
 
   const translation = section("translation", "Перевод");
-  const languages = group(translation, "Языки проекта");
-  const languageGrid = element("div", undefined, "ux-two-fields");
-  languages.append(languageGrid);
+  const legacyQueueDefaults = element("div");
+  legacyQueueDefaults.hidden = true;
+  document.body.append(legacyQueueDefaults);
+  const languageGrid = element("div");
+  legacyQueueDefaults.append(languageGrid);
   field(languageGrid, "source_language", "Оригинал");
   field(languageGrid, "target_language", "Перевод");
-  const engine = group(
-    translation,
-    "Модель перевода",
-    "Эта модель применяется к новым задачам и обычному продолжению перевода. Отдельные очереди повторов сохраняют собственную модель.",
-  );
-  field(engine, "executionModel", "Исполнитель");
+  field(legacyQueueDefaults, "executionModel", "Исполнитель");
   toggle(
     translation,
     "auto_foreign",
     "Сохранять намеренные вставки на другом языке",
-    "Язык определяется локально. Уверенные случаи остаются в оригинале; сомнительные попадают в ручную проверку. Имена и отдельные слова автоматически не исключаются.",
+    "Если Studio уверенно определит, что реплика написана на другом языке, она оставит её в оригинале.",
   );
 
   const context = section("context", "Контекст и персонажи");
   const memory = group(
     context,
     "Справочник проекта",
-    "Персонажи, отношения и термины собираются только из импортированных текстов с цитатами. Спорные выводы проверяет человек. Анализ использует выбранную модель и для облачного API расходует баланс.",
+    "Список имён, связей между персонажами и терминов из текста игры.",
   );
   toggle(
     memory,
     "use_project_knowledge",
     "Использовать справочник при переводе",
-    "Приложение подбирает сведения к текущей фразе. Устаревшие и отклонённые выводы не используются.",
   );
   const autoMemory = toggle(
     memory,
     "analyze_before_translate",
     "Обновлять справочник перед новым переводом",
-    "Сначала анализируются все импортированные строки, затем запускается перевод. Готовые блоки анализа берутся из кэша. Продолжение уже созданной очереди сохраняет её порядок этапов.",
   );
-  memory.append(
-    analyzeKnowledge,
-    help(() => analyzeKnowledge.dataset.modelDescription, "Модель анализа"),
+  const knowledgeActionsRow = element(
+    "div",
+    undefined,
+    "flex wrap settings-action-row",
   );
+  knowledgeActionsRow.append(
+    disabledReason(analyzeKnowledge, () =>
+      !studioState.snapshot?.files.some((file) => file.total)
+        ? "Сначала импортируйте текст"
+        : "Дождитесь завершения текущих задач",
+    ),
+    viewKnowledge,
+    help(
+      "Собрать имена, связи между персонажами и термины из импортированного текста.",
+      "О сборе справочника",
+    ),
+  );
+  memory.append(knowledgeActionsRow);
   const neighbors = group(
-    context,
+    legacyQueueDefaults,
     "Соседние реплики",
     "Контекст берётся из того же файла и сцены. Ноль отключает соответствующую сторону. При нехватке токенов дальние реплики сокращаются или исключаются.",
   );
@@ -219,44 +256,54 @@ const workspaceUi = (() => {
   neighbors.append(neighborGrid);
   field(neighborGrid, "context_before", "До текущей фразы");
   field(neighborGrid, "context_after", "После текущей фразы");
-  const voices = group(context, "Голоса персонажей");
-  voices.append(
+  const voices = group(context, "Имена и речь");
+  const voiceActions = element(
+    "div",
+    undefined,
+    "flex wrap settings-action-row",
+  );
+  voiceActions.append(
     characters,
     help(
-      "Ручные правила имён, обращений и манеры речи относятся только к этому проекту. Неизвестный род можно оставить пустым.",
-      "О голосах персонажей",
+      "Задать написание имени, род и манеру речи конкретного персонажа.",
+      "О правилах для персонажей",
     ),
   );
+  voices.append(voiceActions);
 
   const files = section("files", "Файлы и источники");
-  const fileSources = group(files, "Исходные файлы");
+  const fileSources = group(files, "Папка проекта");
   const projectPath = element("div", undefined, "ux-project-path");
   projectPath.id = "settingsProjectPath";
-  fileSources.append(projectPath, $("importButton"), $("inspectProject"));
-  const historyGroup = group(
-    files,
-    "Показ очереди и истории",
-    "Эти ограничения управляют только отображением, а не переводом или хранением готовых фраз.",
+  const fileActions = element(
+    "div",
+    undefined,
+    "flex wrap settings-action-row",
   );
+  setText("importButton", "Добавить текстовые файлы…");
+  $("importButton").classList.remove("full");
+  fileActions.append($("importButton"), $("inspectProject"));
+  fileSources.append(projectPath, fileActions);
+  const historyGroup = group(files, "Показ очереди и истории");
   historySettings.querySelector("summary").hidden = true;
   historySettings.open = true;
   field(
     historyGroup,
     "historyMaxPhrases",
-    "Последних фраз в истории",
-    "Ограничивает видимый список. Ноль снимает ограничение; готовые переводы из базы не удаляются.",
+    "Количество фраз в истории",
+    "0 — без ограничения.",
   );
   field(
     historyGroup,
     "historyMaxSeconds",
     "Период показа истории, секунд",
-    "Показывает результаты за последние N секунд. Ноль отключает ограничение по времени. Это не срок хранения перевода.",
+    "Показывает результаты за последние N секунд. 0 — за всё время.",
   );
   field(
     historyGroup,
     "processPageSize",
-    "Строк на странице",
-    "От 10 до 200. Меняет размер страницы очереди и истории.",
+    "Строк на странице очереди и истории",
+    "От 10 до 200.",
   );
   $("historyMaxPhrases").max = 1000000;
   $("historyMaxSeconds").max = 31536000;
@@ -268,28 +315,33 @@ const workspaceUi = (() => {
   toggle(api, "cloud_enabled", "Разрешить облачные модели для проекта");
   cloudConnection.querySelector("summary").hidden = true;
   cloudConnection.open = true;
-  api.append(cloudConnection);
+  const manageApi = element("button", "Настроить API-ключи");
+  manageApi.id = "projectManageApiKeys";
+  api.append(manageApi);
+  legacyQueueDefaults.append(cloudConnection);
   const mcp = element("details", undefined, "ux-advanced");
   const mcpMenu = $("mcpButton").closest("details");
-  mcp.append(
-    element("summary", "Внешний ИИ-клиент · MCP"),
-    connectMcp,
-    mcpMenu,
-    proposalsButton,
-  );
+  mcp.append(element("summary", "Внешний ИИ-клиент · MCP"));
+  const mcpActions = element("div", undefined, "flex wrap settings-action-row");
+  setText(proposalsButton, "Предложения правок");
+  setText("mcpButton", "Настроить MCP…");
+  mcpActions.append($("mcpButton"), proposalsButton);
+  mcp.append(mcpActions);
+  legacyQueueDefaults.append(mcpMenu);
   mcpMenu.open = true;
   mcpMenu.querySelector("summary").hidden = true;
   integrations.append(mcp);
   const mcpHint = field(
-    integrations,
+    legacyQueueDefaults,
     "mcp_model_hint",
     "Предпочтительная модель клиента",
     "Имя передаётся подключённому MCP-клиенту как предпочтение; выбор модели зависит от клиента.",
   );
 
   const advanced = section("advanced", "Дополнительно");
+  advanced.append(historyGroup);
   const modelBudget = group(
-    advanced,
+    legacyQueueDefaults,
     "Параметры модели",
     "Меняйте при нехватке контекста или обрезанных ответах. Большие значения повышают расход памяти локальной модели и объём платных облачных запросов.",
   );
@@ -306,7 +358,7 @@ const workspaceUi = (() => {
     "Запросов на один запуск",
     "Предельное число обращений к модели. Это не денежный лимит. Для облака денежное ограничение задаётся у провайдера.",
   );
-  const modelCatalog = group(advanced, "Каталог локальных моделей");
+  const modelCatalog = group(legacyQueueDefaults, "Каталог локальных моделей");
   field(modelCatalog, "model_sort", "Сортировка списка");
   modelCatalog.append(modelInfo);
 
@@ -317,12 +369,14 @@ const workspaceUi = (() => {
   storage.append(settingsMenu, cloudAdvanced, knowledgeTools, translateButton);
   storage.append(saveHistorySettings);
   const sidebarImportHint = $("sidebarContent").querySelector(":scope > p.sub");
-  if (sidebarImportHint) {
-    fileSources
-      .querySelector("h3")
-      .append(help(sidebarImportHint.textContent, "Об импорте файлов"));
-    storage.append(sidebarImportHint);
-  }
+  if (sidebarImportHint) storage.append(sidebarImportHint);
+  const detectedAction = importDetectedButton.parentElement;
+  const importReason = disabledReason(importDetectedButton, () =>
+    detectionBusy
+      ? "Дождитесь завершения поиска"
+      : "Выберите хотя бы один файл",
+  );
+  detectedAction.insertBefore(importReason, closeDetectionButton);
   settingsMenu.hidden = true;
   cloudAdvanced.hidden = true;
   knowledgeTools.hidden = true;
@@ -404,7 +458,6 @@ const workspaceUi = (() => {
   fileHeading.replaceWith(fileMenu);
   choices.hidden = true;
   projectTools.hidden = true;
-  group(context, "Справочник проекта").append(viewKnowledge);
   $("projectBack").hidden = true;
   const descriptionHelp = help(
     () => $("description").textContent,
@@ -511,14 +564,20 @@ const workspaceUi = (() => {
   }
   function refreshDependencies() {
     autoMemory.hidden = !useKnowledge.checked;
-    analyzeKnowledge.disabled = !useKnowledge.checked;
+    analyzeKnowledge.disabled =
+      !studioState.snapshot?.files.some((file) => file.total) ||
+      studioState.snapshot.jobs.some(
+        (job) =>
+          ["queued", "running", "paused", "waiting", "held"].includes(
+            job.state,
+          ) || job.worker_active,
+      );
     updateCloudAvailability();
     updateExecutionChoices();
     mcpHint.hidden = $("provider").value !== "mcp";
     modelCatalog.hidden = $("provider").value !== "local";
     updateLimitInput();
     newRunLimits.update();
-    updateKnowledgeModel();
     studioLifecycle.notify("projectCloudSelection");
   }
   useKnowledge.addEventListener("change", () => {
@@ -626,13 +685,10 @@ const workspaceUi = (() => {
     }
   }
   for (const selector of [
-    "#importDialog > p.sub",
     "#exportDialog > p.sub",
-    "#speakerDialog > p.sub",
     "#runLimits > p.sub",
     "#newRunLimits > p.sub",
     "#historySettings > p.sub",
-    "#projectManager .manager-group > p",
     "#appAbout > p.sub:not([id])",
     "main > aside:first-child > p.sub",
     "#cloudAdvanced p.sub",
@@ -738,5 +794,12 @@ const workspaceUi = (() => {
       if (selected) selectTab("translation");
     };
   }
-  return { openSettings, selectTab, help, refreshDependencies, registerTab };
+  return {
+    openSettings,
+    selectTab,
+    help,
+    disabledReason,
+    refreshDependencies,
+    registerTab,
+  };
 })();

@@ -104,55 +104,48 @@ void (async () => {
       "scoped key metadata",
     );
     $("projectSettingsButton").click();
-    const executor = $("executionModel");
+    const projectDialog = $("projectSettingsDialog");
     check(
-      [...executor.options].some(
-        (option) => option.value === "api:fixture-global",
-      ),
-      "global API key is visible in the executor chooser",
+      !projectDialog.contains($("source_language")) &&
+        !projectDialog.contains($("executionModel")),
+      "project settings omit language and executor controls",
     );
     check(
-      ![...executor.options].some(
-        (option) => option.value === "api:fixture-scoped",
-      ),
-      "executor chooser excludes keys scoped to another project",
+      $("analyzeKnowledge").disabled &&
+        $("analyzeKnowledge").parentElement.classList.contains(
+          "disabled-reason",
+        ),
+      "blocked analysis offers a reason",
     );
-    executor.value = "api:fixture-global";
-    executor.onchange();
+    $("settingsTab-context").click();
+    $("analyzeKnowledge").parentElement.onmouseenter();
     check(
-      $("cloud_enabled").checked &&
-        $("settingsPanel-translation").contains($("cloudModelOptions")) &&
-        !$("executorModelFields").hidden,
-      "choosing the key enables API and shows models on the translation tab",
+      !$("contextTooltip").hidden &&
+        $("contextTooltip").textContent.includes("текущих задач"),
+      "disabled analysis explains its specific blocker",
     );
+    $("analyzeKnowledge").parentElement.onmouseleave();
+    $("settingsTab-files").click();
+    await $("importButton").onclick();
+    check(
+      $("importDialog").open &&
+        !$("importExtra").open &&
+        !$("uploadFiles").closest("details"),
+      "file selection is primary and alternate import methods are folded",
+    );
+    $("importDialog").close();
     $("settingsTab-integrations").click();
+    await $("projectManageApiKeys").onclick();
+    check(
+      $("cloudCatalogDialog").open && !$("updatesDialog").open,
+      "project opens the API key catalog directly",
+    );
+    $("cloudCatalogDialog").close();
     $("cloud_enabled").checked = true;
-    $("cloud_enabled").dispatchEvent(new Event("change", { bubbles: true }));
-    const picker = $("cloudConnectionPicker");
-    check(
-      [...picker.options].some((option) => option.value === "fixture-global"),
-      "global connection available",
-    );
-    check(
-      ![...picker.options].some((option) => option.value === "fixture-scoped"),
-      "other project connection hidden",
-    );
-    picker.value = "fixture-global";
-    await picker.onchange();
-    $("settingsTab-translation").click();
-    check(!$("cloudModelOptions").hidden, "discovered models are selectable");
-    $("cloudModelOptions").value = "second-model";
-    $("cloudModelOptions").onchange();
-    check(
-      settings().cloud_connection === "fixture-global" &&
-        settings().cloud_model === "second-model",
-      "job selects key and model independently",
-    );
     await $("saveSettings").onclick();
     check(
-      $("activeSettings").textContent ===
-        "API-ключ «fixture-global» · second-model",
-      "paused job shows the key name and model chosen for continuation",
+      $("activeSettings").textContent.includes("fixture-model"),
+      "paused job keeps its saved executor",
     );
     const originalRequest = request;
     let control;
@@ -167,9 +160,9 @@ void (async () => {
       await $("mainAction").onclick();
       check(
         control?.mode === "resume" &&
-          control.settings.cloud_connection === "fixture-global" &&
-          control.settings.cloud_model === "second-model",
-        "resume sends the same connection and model as the label",
+          control.preserve_project_settings &&
+          !control.settings,
+        "resume keeps the existing queue settings",
       );
     } finally {
       request = originalRequest;
@@ -361,10 +354,13 @@ void (async () => {
         "parallel launch offers separate local and API executors",
       );
       executor.value = "local:local-fixture";
+      $("queueSourceLanguage").value = "German";
       executor.onchange();
       await parallelForm.onsubmit(new Event("submit", { cancelable: true }));
       check(
         newTaskPayload.stage === "review" &&
+          newTaskPayload.settings.source_language === "German" &&
+          $("queueTargetLanguage").tagName === "SELECT" &&
           newTaskPayload.settings.model === "local-fixture" &&
           studioState.job.id === 99 &&
           selectedQueuePath.endsWith("&job=99") &&

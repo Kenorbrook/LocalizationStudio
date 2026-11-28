@@ -226,6 +226,17 @@ class HermesTests(unittest.TestCase):
                 "done",
             )
 
+    def test_auto_retry_can_select_only_memory_or_limits(self):
+        from error_recovery import categories
+
+        job = self.failed()
+        self.assertEqual(categories(self.store, self.project, ["output"]), ["output"])
+        with patch("job_runtime.launch") as launch:
+            self.assertEqual(after_job(self.store, job), [])
+            launch.assert_not_called()
+            categories(self.store, self.project, ["memory"])
+            self.assertEqual(len(after_job(self.store, job)), 1)
+
     def test_recovery_preserves_manual_edits_and_originals(self):
         jid = self.failed()
         row = self.store.record(1)

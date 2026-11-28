@@ -9,29 +9,13 @@ knowledgeTools.append(
     "sub",
   ),
 );
-const analyzeKnowledge = element("button", "Анализировать проект выбранной ИИ");
+const analyzeKnowledge = element("button", "Собрать персонажей и термины…");
 analyzeKnowledge.id = "analyzeKnowledge";
 const viewKnowledge = element("button", "Справочник и неясные места");
 viewKnowledge.id = "viewKnowledge";
 const knowledgeActions = element("div", undefined, "flex wrap");
 knowledgeActions.append(analyzeKnowledge, viewKnowledge);
 knowledgeTools.append(knowledgeActions);
-function updateKnowledgeModel() {
-  const cloud = $("provider").value === "cloud";
-  const model = $(cloud ? "cloud_model" : "model").value || "модель не выбрана";
-  setText(analyzeKnowledge, "Собрать персонажей и термины");
-  analyzeKnowledge.dataset.modelDescription = `${cloud ? "Облако" : "Локально"}: ${model}`;
-}
-for (const id of ["provider", "cloud_model", "model"]) {
-  $(id).addEventListener("input", updateKnowledgeModel);
-  $(id).addEventListener("change", updateKnowledgeModel);
-}
-studioLifecycle.register(
-  "refresh",
-  "knowledgeModelLabel",
-  updateKnowledgeModel,
-);
-updateKnowledgeModel();
 const autoKnowledgeLabel = element("label");
 const autoKnowledge = element("input");
 autoKnowledge.id = "analyze_before_translate";
@@ -75,19 +59,7 @@ studioLifecycle.register("refresh", "knowledgeProjectSettings", () => {
 });
 analyzeKnowledge.onclick = guard(async () => {
   if (!studioState.project) throw Error("Откройте проект");
-  const provider = $("provider").value;
-  if (provider === "mcp")
-    throw Error("Для анализа выберите локальную модель или облачный API");
-  await request("job", {
-    project: studioState.project,
-    stage: "analyze",
-    provider,
-    settings: settings(),
-  });
-  await refresh();
-  toast(
-    "Анализ текста запущен · прогресс и журнал в приложении. Ручные правки сохраняются.",
-  );
+  await projectQueues.open(false, null, "analyze");
 });
 const knowledgeDialog = element("dialog");
 knowledgeDialog.id = "knowledgeDialog";
@@ -128,7 +100,7 @@ async function loadKnowledge() {
     `knowledge?project=${pid}&offset=${knowledgeOffset}&state=${knowledgeFilter.value}`,
   );
   if (pid !== knowledgeOwner) return;
-  knowledgeSummary.textContent = `Сведений: ${result.total}. Требуют проверки: ${result.counts.review || 0}. ИИ может ошибаться; исходник и ваши правила приоритетны.`;
+  knowledgeSummary.textContent = `Сведений: ${result.total} · требуют проверки: ${result.counts.review || 0}`;
   knowledgeCards.replaceChildren();
   const states = {
     auto: "Вывод ИИ",
@@ -186,7 +158,9 @@ async function loadKnowledge() {
     knowledgeCards.append(
       element(
         "p",
-        "Сведений пока нет. Запустите анализ или выберите другой фильтр.",
+        knowledgeFilter.value
+          ? "В этой категории сведений нет."
+          : "Справочник пуст. Нажмите «Собрать персонажей и термины» в настройках проекта.",
       ),
     );
   knowledgePrev.disabled = knowledgeOffset === 0;

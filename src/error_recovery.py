@@ -5,6 +5,7 @@ from collections import defaultdict
 from serialization import now, dump
 
 MAX_ROUNDS = 2
+KINDS = {"memory": 1, "context": 2, "output": 4}
 
 
 def preference(store, project, enabled=None):
@@ -17,7 +18,8 @@ def preference(store, project, enabled=None):
             if type(enabled) is not bool:
                 raise ValueError("Некорректная настройка повтора")
             db.execute(
-                "INSERT OR REPLACE INTO recovery_preferences VALUES (?,?)",
+                "INSERT INTO recovery_preferences(project,enabled,kinds) VALUES (?,?,7) "
+                "ON CONFLICT(project) DO UPDATE SET enabled=excluded.enabled,kinds=7",
                 (project, int(enabled)),
             )
             if not enabled:
@@ -31,7 +33,41 @@ def preference(store, project, enabled=None):
         return bool(row and row[0])
 
 
-def adjustment(settings, message):
+def categories(store, project, kinds=None):
+    with store.db() as db:
+        if kinds is not None:
+            if not isinstance(kinds, list) or any(
+                not isinstance(key, str) or key not in KINDS for key in kinds
+            ):
+                raise ValueError("Неизвестная категория автоповтора")
+            if not db.execute(
+                "SELECT 1 FROM projects WHERE id=? AND deleting=0", (project,)
+            ).fetchone():
+                raise ValueError("Проект не найден")
+            mask = sum(KINDS[key] for key in set(kinds))
+            db.execute(
+                "INSERT INTO recovery_preferences(project,enabled,kinds) VALUES (?,?,?) "
+                "ON CONFLICT(project) DO UPDATE SET enabled=excluded.enabled,kinds=excluded.kinds",
+                (project, int(bool(mask)), mask),
+            )
+            db.execute(
+                "UPDATE jobs SET state='cancelled',error='Автоповтор отключён' WHERE project=? AND state IN ('waiting','held') "
+                "AND EXISTS(SELECT 1 FROM recovery_jobs WHERE job=jobs.id) "
+                "AND json_extract(settings,'$._recovery_automatic')=1 "
+                "AND (?=0 OR coalesce(json_extract(settings,'$._recovery_kind'),7)&?=0)",
+                (project, mask, mask),
+            )
+        row = db.execute(
+            "SELECT enabled,kinds FROM recovery_preferences WHERE project=?", (project,)
+        ).fetchone()
+    return [
+        key
+        for key, bit in KINDS.items()
+        if row and row["enabled"] and row["kinds"] & bit
+    ]
+
+
+def adjustment(settings, message, *, with_kind=False):
     text = message.lower()
     result = dict(settings)
     context = int(settings.get("context", 8192))
@@ -52,11 +88,13 @@ def adjustment(settings, message):
         )
         result["max_output"] = min(output, max(100, result["context"] // 3))
         reason = "Меньше памяти: уменьшены контекст и соседние реплики"
+        kind = "memory"
     elif "лимита ответа" in text or "лимита выходных" in text:
         result["max_output"] = min(output * 2, max(100, context - 2048))
         if result["max_output"] <= output:
             return None
         reason = "Больше места для ответа в пределах прежнего контекста"
+        kind = "output"
     elif any(
         term in text
         for term in [
@@ -72,9 +110,10 @@ def adjustment(settings, message):
             return None
         result.update(context_before=0, context_after=0)
         reason = "Убраны соседние реплики; правила и служебные символы сохраняются"
+        kind = "context"
     else:
         return None
-    return result, reason
+    return (result, reason, kind) if with_kind else (result, reason)
 
 
 def plan(store, project, job_id=None):
@@ -117,9 +156,9 @@ def plan(store, project, job_id=None):
                 (job_id, error["record"]),
             ).fetchone()
             effective = {**settings, **(json.loads(custom[0]) if custom else {})}
-            changed = adjustment(effective, error["message"])
+            changed = adjustment(effective, error["message"], with_kind=True)
             if changed:
-                selected, reason = changed
+                selected, reason, kind = changed
                 result["rows"].append(
                     {
                         "record": error["record"],
@@ -127,6 +166,7 @@ def plan(store, project, job_id=None):
                         "error": error["id"],
                         "reason": reason,
                         "settings": selected,
+                        "kind": kind,
                     }
                 )
         return result
@@ -141,18 +181,23 @@ def apply(store, project, job_id=None, automatic=False):
     with getattr(store, "launch_lock", nullcontext()):
         if getattr(store, "closing", False):
             return []
-        if automatic and not preference(store, project):
+        enabled = categories(store, project) if automatic else KINDS
+        if not enabled:
             return []
         selected = plan(store, project, job_id)
         if not selected["rows"]:
             return []
         groups = defaultdict(list)
         for row in selected["rows"]:
+            if row["kind"] not in enabled:
+                continue
             settings = row["settings"]
             settings.update(
                 _recovery_round=selected["round"],
                 _recovery_root=settings.get("_recovery_root", selected["job"]),
                 _retry_origin=selected["job"],
+                _recovery_kind=KINDS[row["kind"]],
+                _recovery_automatic=automatic,
             )
             # A retry is a separate bounded run, not a reset of the original queue.
             settings.update(run_lines=0, run_minutes=0)
@@ -198,6 +243,14 @@ def apply(store, project, job_id=None, automatic=False):
             ).fetchone():
                 return []
             for encoded, rows in groups.items():
+                if (
+                    automatic
+                    and not db.execute(
+                        "SELECT 1 FROM recovery_preferences WHERE project=? AND enabled=1 AND kinds&?<>0",
+                        (project, KINDS[rows[0]["kind"]]),
+                    ).fetchone()
+                ):
+                    continue
                 valid = [
                     row
                     for row in rows

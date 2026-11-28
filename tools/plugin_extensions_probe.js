@@ -48,7 +48,7 @@ void (async () => {
     await api.set_plugin_enabled("qa-broken",true);await sync();
     check("failedActivationCleansPartialContributions",!$("qaPartialNode")&&!document.querySelector('[data-plugin-style="qa-broken"]')&&!!pluginHost.diagnostics().errors["qa-broken"]);
     await api.set_plugin_enabled("qa-broken",false);await sync();
-    check("coreRetryAvailableWithoutAgent",!$("hermesSources")&&!!$("automaticErrorRetry"));
+    check("coreRetryAvailableWithoutAgent",!$("hermesSources")&&!!$("retryCategory-memory"));
     await pluginsUi.open();
     window.__featureProbe={passed:true,checks};
   } catch(error) { window.__featureProbe={passed:false,checks,error:error.message,stack:error.stack,host:pluginHost.diagnostics()}; } finally {clearTimeout(watchdog);}

@@ -73,12 +73,7 @@ proposalsButton.onclick = guard(async () => {
     $("infoContent").append(card);
   }
   if (!proposals.length)
-    $("infoContent").append(
-      element(
-        "p",
-        "Ожидающих предложений нет. Они появятся после работы внешней ИИ через MCP.",
-      ),
-    );
+    $("infoContent").append(element("p", "Нет предложений правок."));
   $("infoDialog").showModal();
 });
 // Allow progress polling during editing; quiet row updates preserve editor contents.
@@ -99,12 +94,12 @@ setInterval(async () => {
   }
 }, 2500);
 // Text can be supplied without creating a file outside the application first.
-const textLabel = element("p", "Вставить текст", "sub");
+const textLabel = element("label", "Оригинальный текст без файла");
 const extraText = element("textarea");
 extraText.id = "extraText";
-extraText.placeholder = "Вставьте недостающий оригинальный текст";
-const importActions = $("doImport").parentElement;
-importActions.before(textLabel, extraText);
+textLabel.htmlFor = extraText.id;
+extraText.placeholder = "Например, скопируйте сюда реплики из сценария";
+$("importExtra").append(textLabel, extraText);
 $("doImport").onclick = guard(async () => {
   let added = 0;
   const uploaded = $("uploadFiles").files;

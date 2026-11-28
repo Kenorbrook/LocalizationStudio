@@ -48,6 +48,12 @@ def initialize(db):
         db.execute(
             "ALTER TABLE cloud_connections ADD COLUMN retry_unavailable INTEGER NOT NULL DEFAULT 1"
         )
+    if "kinds" not in {
+        r[1] for r in db.execute("PRAGMA table_info(recovery_preferences)")
+    }:
+        db.execute(
+            "ALTER TABLE recovery_preferences ADD COLUMN kinds INTEGER NOT NULL DEFAULT 7"
+        )
     if "origin" not in {r[1] for r in db.execute("PRAGMA table_info(record_marks)")}:
         db.execute("ALTER TABLE record_marks ADD COLUMN origin TEXT DEFAULT 'unknown'")
     for column in ["completed", "keep_visible", "deleting"]:

@@ -324,6 +324,7 @@
     await loadCloudCatalog();
   });
   openCloudSettings.onclick = manageConnections.onclick = openCatalog;
+  $("projectManageApiKeys").onclick = openCatalog;
   const selectConnection = guard(async (identity) => {
     if (connectionIdentity.value === identity) return;
     connectionIdentity.value = identity;

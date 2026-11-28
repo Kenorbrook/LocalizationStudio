@@ -242,22 +242,15 @@ studioLifecycle.register(
   },
 );
 showView("home");
-const characters = element("button", "Персонажи и голоса");
+const characters = element("button", "Правила для персонажей…");
 projectTools.append(characters);
 const profileDialog = element("dialog");
 profileDialog.id = "speakerDialog";
-profileDialog.append(
-  element("h1", "Персонажи и голоса"),
-  element(
-    "p",
-    "Правила относятся только к этому проекту. Укажите идентификатор из исходника. Неизвестный род оставляйте пустым. Самообращение и обращения к персонажу могут различаться.",
-    "sub",
-  ),
-);
+profileDialog.append(element("h1", "Правила для персонажей"));
 const profileList = element("div");
 profileDialog.append(profileList);
 const profileActions = element("div", undefined, "flex wrap");
-const addProfile = element("button", "+ Добавить голос"),
+const addProfile = element("button", "+ Добавить персонажа"),
   saveProfiles = element("button", "Сохранить профили", "primary"),
   closeProfiles = element("button", "Закрыть");
 profileActions.append(addProfile, saveProfiles, closeProfiles);
@@ -266,24 +259,49 @@ document.body.append(profileDialog);
 function profileCard(id = "", profile = {}) {
   const card = element("div", undefined, "error");
   const fields = [
-    ["id", "Идентификатор говорящего", id],
+    ["id", "Имя говорящего в исходном тексте", id],
     ["name", "Имя", profile.name],
-    ["kind", "Тип: dialogue / thought / narrator / unknown", profile.kind],
+    ["kind", "Тип реплик", profile.kind],
     [
       "self_reference_gender",
-      "Как говорит о себе: мужской / женский / неизвестно",
+      "Род, когда персонаж говорит о себе",
       profile.self_reference_gender,
     ],
-    ["reference_gender", "Как говорят о персонаже", profile.reference_gender],
     [
-      "notes",
-      "Особенности речи, исключения и подтверждающие примеры",
-      profile.notes,
+      "reference_gender",
+      "Род, когда о нём говорят другие",
+      profile.reference_gender,
     ],
+    ["notes", "Обращения и манера речи", profile.notes],
   ];
   for (const [key, label, value] of fields) {
     card.append(element("label", label));
-    const input = element("input");
+    const choices =
+      key === "kind"
+        ? [
+            ["", "Не указан"],
+            ["dialogue", "Диалог"],
+            ["thought", "Мысли"],
+            ["narrator", "Рассказчик"],
+            ["unknown", "Неизвестно"],
+          ]
+        : key.endsWith("_gender")
+          ? [
+              ["", "Не указан"],
+              ["мужской", "Мужской"],
+              ["женский", "Женский"],
+            ]
+          : null;
+    const input = element(choices ? "select" : "input");
+    if (choices) {
+      if (value && !choices.some(([id]) => id === value))
+        choices.push([value, value]);
+      for (const [id, text] of choices) {
+        const option = element("option", text);
+        option.value = id;
+        input.append(option);
+      }
+    }
     input.dataset.field = key;
     input.value = value || "";
     card.append(input);
@@ -310,18 +328,18 @@ saveProfiles.onclick = guard(async () => {
   for (const card of profileList.children) {
     const values = {};
     card
-      .querySelectorAll("input")
+      .querySelectorAll("input,select")
       .forEach((i) => (values[i.dataset.field] = i.value.trim()));
     const id = values.id;
     delete values.id;
-    if (!id) throw Error("Укажите идентификатор каждого голоса");
+    if (!id) throw Error("Укажите имя говорящего для каждой записи");
     if (profiles[id]) throw Error("Идентификатор повторяется: " + id);
     profiles[id] = values;
   }
   await request("speaker-profiles", { project: studioState.project, profiles });
   profileDialog.close();
   await refresh();
-  toast("Правила персонажей сохранены для этого проекта");
+  toast("Правила сохранены");
 });
 
 // One primary action; secondary operations stay available in named submenus.
@@ -416,30 +434,18 @@ settingsMenu.before(reviewMenu);
 setText(right.querySelector('[data-stage="review"]'), "Литературная редакция");
 setText(right.querySelector('[data-stage="cloud"]'), "Облачная проверка");
 mainAction.onclick = guard(async () => {
-  if (
-    ["paused", "held"].includes(studioState.job?.state) &&
-    studioState.job.provider === "cloud" &&
-    !usesSavedExecutor(studioState.job) &&
-    !cloudEnabled.checked
-  )
-    throw Error(
-      "Это облачная очередь. Включите облачные модели в дополнительных настройках или отмените её и создайте локальную задачу",
-    );
-  if (
-    studioState.job?.state === "held" ||
-    (studioState.job?.state === "paused" &&
-      JSON.parse(studioState.job.settings || "{}")._retry_origin)
-  ) {
+  const job = studioState.job;
+  if (job?.state === "held") {
     await request("control", {
-      id: studioState.job.id,
+      id: job.id,
       mode: "resume",
-      limits: readRunLimits(),
       preserve_project_settings: true,
     });
     await refresh();
-  } else if (studioState.job?.state === "paused") await $("resume").onclick();
-  else if (studioState.job?.state === "running") await $("pause").onclick();
-  else if (studioState.job?.state !== "queued") await start("translate");
+  } else if (job?.state === "paused") await $("resume").onclick();
+  else if (job?.state === "running") await $("pause").onclick();
+  else if (job?.state !== "queued")
+    await projectQueues.open(false, null, "translate");
 });
 function updateTaskActions() {
   const active =
@@ -480,11 +486,7 @@ function updateTaskActions() {
   );
   const savedJob = active ? JSON.parse(studioState.job.settings || "{}") : {};
   const currentSettings = active
-    ? studioState.job.state === "paused" &&
-      !savedJob._retry_origin &&
-      !usesSavedExecutor(studioState.job)
-      ? { ...savedJob, ...resumeExecutionSettings(studioState.job) }
-      : savedJob
+    ? savedJob
     : Object.fromEntries(
         [
           "model",
@@ -847,19 +849,14 @@ function managementGroup(title, hint, buttons, danger = false) {
   section.append(actions);
   managerBody.append(section);
 }
-managementGroup(
-  "Положение в списке",
-  "Скрытие сохраняет переводы, правки и очередь. Работающая задача продолжит выполняться. В завершённые можно перенести проект без строк, ожидающих перевода.",
-  [hideProject, completeProject],
-);
-managementGroup(
-  "Другие проекты",
-  "Вернуть сохранённый проект в активный список.",
-  [hiddenProjects],
-);
+managementGroup("Положение в списке", "Архив убирает проект из списка.", [
+  hideProject,
+  completeProject,
+]);
+managementGroup("Другие проекты", "", [hiddenProjects]);
 managementGroup(
   "Удаление данных проекта",
-  "Остановит задачи и удалит переводы, историю и настройки из программы. Игровая папка останется. Перед удалением появится подтверждение.",
+  "Удаляет переводы, историю и настройки Studio. Папка игры сохраняется.",
   [deleteProject],
   true,
 );

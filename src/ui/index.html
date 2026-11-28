@@ -169,18 +169,19 @@
     </div>
   </dialog>
   <dialog id="importDialog">
-    <h1>Догрузить текст</h1>
-    <p class="sub">
-      Выберите один или несколько файлов либо укажите полные пути, каждый на
-      новой строке. JSON: массив записей source / translation или дерево строк.
-      CSV: столбец source.
-    </p>
+    <h1>Добавить текст</h1>
+    <label for="uploadFiles">Текстовые файлы</label>
     <input
       id="uploadFiles"
       type="file"
       multiple
       accept=".rpy,.txt,.json,.jsonl,.csv"
-    /><textarea id="importPaths" placeholder="Полный путь к файлу"></textarea>
+    />
+    <details id="importExtra">
+      <summary>Другие способы добавления</summary>
+      <label for="importPaths">Пути к файлам (по одному на строку)</label>
+      <textarea id="importPaths"></textarea>
+    </details>
     <div class="flex" style="margin-top: 15px">
       <button id="doImport" class="primary">Добавить в проект</button
       ><button data-close>Закрыть</button>

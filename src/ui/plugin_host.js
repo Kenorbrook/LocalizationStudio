@@ -145,6 +145,10 @@ const pluginHost = (() => {
         });
       },
       mount(slot, node) {
+        if (item.id === "hermes" && slot === "project.settings.files") {
+          api.projectTab("research", "Hermes", node);
+          return node;
+        }
         if (!slots[slot]) throw Error("Неизвестная точка подключения: " + slot);
         mounts.push({ slot, node });
         if (enabled || slot === "app.dialogs") attach(slot, node);

@@ -356,17 +356,6 @@ function pendingTranslationText(job) {
   );
 }
 
-function usesSavedExecutor(job) {
-  return !!(
-    job?.parallel ||
-    JSON.parse(job?.settings || "{}")._queue_configured ||
-    studioState.snapshot?.jobs.some(
-      (other) =>
-        other.parallel && ["running", "queued", "paused"].includes(other.state),
-    )
-  );
-}
-
 function currentRecordPage() {
   if (["home", "errors", "plugins"].includes(studioState.viewMode)) return null;
   const specialized = studioLifecycle.page(studioState.viewMode);
@@ -704,69 +693,34 @@ $("doImport").onclick = guard(async () => {
 for (let b of document.querySelectorAll("[data-close]"))
   b.onclick = () => b.closest("dialog").close();
 for (let b of document.querySelectorAll("[data-stage]"))
-  b.onclick = guard(() => start(b.dataset.stage));
+  b.onclick = guard(() => projectQueues.open(false, null, b.dataset.stage));
 $("retry").onclick = guard(() => start(studioState.lastStage, true));
-function resumeExecutionSettings(job) {
-  const options = settings();
-  if (job.provider !== options.provider) {
-    for (const key of [
-      "cloud_connection",
-      "cloud_model",
-      "endpoint",
-      "model",
-      "mcp_session",
-      "mcp_model_hint",
-    ])
-      delete options[key];
-  }
-  return options;
-}
 for (let mode of ["pause", "resume", "cancel"])
   $(mode).onclick = guard(async () => {
-    if (mode === "resume" && usesSavedExecutor(studioState.job)) {
-      await request("control", {
-        id: studioState.job.id,
-        mode,
-        preserve_project_settings: true,
-      });
-      await refresh();
-      return;
-    }
-    if (
-      mode === "resume" &&
-      studioState.job?.provider === "cloud" &&
-      !$("cloud_enabled").checked
-    )
-      throw Error(
-        "Это облачная очередь. Включите облачные модели в дополнительных настройках или отмените её и создайте локальную задачу",
-      );
-    const options =
-      mode === "resume" ? resumeExecutionSettings(studioState.job) : undefined;
-    if (
-      options?.provider === "cloud" &&
-      studioState.job.provider === "cloud" &&
-      !options.cloud_model
-    )
-      throw Error("Выберите модель API в настройках проекта");
+    if (!studioState.job) return;
     await request("control", {
       id: studioState.job.id,
       mode,
-      settings: options,
-      limits: mode === "resume" ? readRunLimits() : undefined,
-      neighbors: mode === "resume" ? readNeighborContext() : undefined,
-      auto_foreign: mode === "resume" ? $("auto_foreign").checked : undefined,
+      preserve_project_settings: true,
     });
     await refresh();
   });
 $("saveSettings").onclick = guard(async () => {
   if (!studioState.project) throw Error("Сначала откройте проект");
   studioLifecycle.notify("validateProjectSettings");
-  const projectSettings = settings();
-  delete projectSettings.run_lines;
-  delete projectSettings.run_minutes;
+  const values = settings();
+  const projectSettings = Object.fromEntries(
+    [
+      "auto_foreign",
+      "use_project_knowledge",
+      "analyze_before_translate",
+      "cloud_enabled",
+    ].map((key) => [key, values[key]]),
+  );
   const result = await request("settings", {
     project: studioState.project,
     settings: projectSettings,
+    patch: true,
     preferences: {
       max_phrases: +$("historyMaxPhrases").value,
       max_seconds: +$("historyMaxSeconds").value,

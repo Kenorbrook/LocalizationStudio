@@ -50,7 +50,21 @@ def speaker_profiles(store, data):
 
 def settings(store, data):
     pid = int(data["project"])
-    settings = {**data["settings"], **neighbor_settings(data["settings"])}
+    values = data["settings"]
+    patch = data.get("patch") is True
+    if patch and any(
+        key
+        not in {
+            "auto_foreign",
+            "use_project_knowledge",
+            "analyze_before_translate",
+            "cloud_enabled",
+        }
+        or type(value) is not bool
+        for key, value in values.items()
+    ):
+        raise ValueError("Некорректная настройка проекта")
+    settings = dict(values) if patch else {**values, **neighbor_settings(values)}
     key = data.get("key")
     preferences = None
     if "preferences" in data:
@@ -60,17 +74,22 @@ def settings(store, data):
     if not isinstance(settings.get("auto_foreign", True), bool):
         raise ValueError("Некорректная настройка определения языка")
     with store.db() as db:
-        old = json.loads(
-            db.execute("SELECT settings FROM projects WHERE id=?", (pid,)).fetchone()[0]
-        )
-    if "speaker_profiles" in old:
-        settings["speaker_profiles"] = old["speaker_profiles"]
-    from cloud_connections import preserve_legacy
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT settings FROM projects WHERE id=? AND deleting=0", (pid,)
+        ).fetchone()
+        if not row:
+            raise ValueError("Проект не найден")
+        old = json.loads(row[0])
+        if patch:
+            settings = {**old, **settings}
+        elif "speaker_profiles" in old:
+            settings["speaker_profiles"] = old["speaker_profiles"]
+        from cloud_connections import preserve_legacy
 
-    preserve_legacy(old, settings, replacing=bool(key))
-    if key:
-        secret(pid, key)
-    with store.db() as db:
+        preserve_legacy(old, settings, replacing=bool(key))
+        if key:
+            secret(pid, key)
         db.execute("UPDATE projects SET settings=? WHERE id=?", (dump(settings), pid))
         if preferences is not None:
             db.execute(

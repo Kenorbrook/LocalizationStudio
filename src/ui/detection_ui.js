@@ -67,12 +67,13 @@ function renderDetection() {
   detectionBody.append(
     element(
       "strong",
-      report.engine.name +
+      "Движок игры: " +
+        report.engine.name +
         (report.engine.version ? " · " + report.engine.version : ""),
     ),
     element(
       "p",
-      `Папка: ${report.root}\nПросмотрено файлов: ${report.scanned_files} · ${report.at} · ${report.elapsed_seconds} с`,
+      `Проверено файлов: ${report.scanned_files} · подходит для импорта: ${report.capabilities.importable_files}`,
       "sub",
     ),
   );
@@ -99,15 +100,12 @@ function renderDetection() {
       ),
     );
   const evidence = element("details");
-  evidence.append(element("summary", "Признаки движка и ограничения анализа"));
+  evidence.append(element("summary", "Диагностика определения движка"));
   for (const engine of report.engines) {
     evidence.append(
       element(
         "strong",
-        engine.name +
-          (engine.confidence === "high"
-            ? " — подтверждённые признаки"
-            : " — предварительно"),
+        engine.name + (engine.confidence === "high" ? "" : " — предварительно"),
       ),
     );
     for (const proof of engine.evidence)

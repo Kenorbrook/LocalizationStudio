@@ -160,6 +160,11 @@ class DesktopApi(CloseApi):
 
         return recovery(self._store, int(project), start=True)
 
+    def set_retry_categories(self, project, kinds):
+        from recovery_api import recovery
+
+        return recovery(self._store, int(project), kinds=kinds)
+
     def get_recovery_state(self, project=0):
         from recovery_api import recovery
 
