@@ -841,9 +841,24 @@ dialog.settings-popup[open] {
 }
 .dashboard-bar {
   flex: 1 1 0;
-  height: max(2px, var(--height));
+  display: flex;
+  flex-direction: column-reverse;
+  height: var(--height);
   border-radius: 3px 3px 0 0;
-  background: var(--accent);
+  overflow: hidden;
+}
+.dashboard-segment {
+  flex-basis: 0;
+}
+.dashboard-models li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.dashboard-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 1px;
 }
 .dashboard-scale {
   display: flex;

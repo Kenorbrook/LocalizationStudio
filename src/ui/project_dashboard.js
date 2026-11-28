@@ -56,6 +56,28 @@
   let statsKey = "";
   let lastRequest = 0;
   let requestVersion = 0;
+  const palette = [
+    "#94deca",
+    "#83b8ff",
+    "#ffb181",
+    "#c6a7ff",
+    "#e8d26c",
+    "#f79dbf",
+    "#82d7f8",
+    "#b3da88",
+  ];
+  const modelColors = new Map();
+  function modelColor(name) {
+    if (!modelColors.has(name)) {
+      const index = modelColors.size;
+      modelColors.set(
+        name,
+        palette[index] || `hsl(${(index * 137.508) % 360} 72% 72%)`,
+      );
+    }
+    return modelColors.get(name);
+  }
+  const modelName = (name) => name.replace(/^(local|cloud|mcp):/, "");
   const number = (value) => value.toLocaleString("ru-RU");
   const time = (value) =>
     new Date(value * 1000).toLocaleTimeString("ru-RU", {
@@ -86,25 +108,44 @@
           : "Загрузка статистики…"),
     );
     if (!total) return;
+    const series = Object.keys(stats.models).sort();
+    series.forEach(modelColor);
     for (const [i, bucket] of buckets.entries()) {
       const bar = element("div", undefined, "dashboard-bar");
       bar.style.setProperty("--height", (100 * values[i]) / max + "%");
-      bar.title = time(bucket.at) + " · " + number(values[i]);
+      const end = Math.min(stats.end, bucket.at + stats.bucket_seconds);
+      const breakdown = [
+        time(bucket.at) + "–" + time(end) + " · " + number(values[i]),
+      ];
+      for (const name of series) {
+        const amount = bucket.models[name]?.[key] || 0;
+        if (!amount) continue;
+        const segment = element("span", undefined, "dashboard-segment");
+        segment.style.backgroundColor = modelColor(name);
+        segment.style.flexGrow = amount;
+        bar.append(segment);
+        breakdown.push(modelName(name) + " · " + number(amount));
+      }
+      if (values[i]) bar.title = breakdown.join("\n");
       graph.append(bar);
     }
     scale.append(
       element("span", time(buckets[0].at)),
-      element("span", time(buckets.at(-1).at)),
+      element("span", time(stats.end)),
     );
     for (const [model, count] of Object.entries(stats.models).sort(
       (a, b) => b[1][key] - a[1][key],
     )) {
-      models.append(
-        element(
-          "li",
-          model.replace(/^(local|cloud|mcp):/, "") + " · " + number(count[key]),
-        ),
+      if (!count[key]) continue;
+      const entry = element(
+        "li",
+        modelName(model) + " · " + number(count[key]),
       );
+      const swatch = element("span", undefined, "dashboard-swatch");
+      swatch.style.backgroundColor = modelColor(model);
+      swatch.setAttribute("aria-hidden", "true");
+      entry.prepend(swatch);
+      models.append(entry);
     }
   }
   async function loadStats() {

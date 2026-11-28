@@ -38,6 +38,20 @@ void (async () => {
           .textContent.includes("fixture-model"),
       "dashboard plots actual saved output by model",
     );
+    const bars = document.querySelectorAll(".dashboard-bar");
+    const colors = (selector) =>
+      [...document.querySelectorAll(selector)]
+        .map((node) => node.style.backgroundColor)
+        .sort();
+    check(
+      bars.length === 20 &&
+        bars[bars.length - 1].querySelectorAll(".dashboard-segment").length ===
+          2 &&
+        new Set(colors(".dashboard-segment")).size === 2 &&
+        JSON.stringify(colors(".dashboard-segment")) ===
+          JSON.stringify(colors(".dashboard-swatch")),
+      "hour chart has no spare column and stacks distinct colors matching its legend",
+    );
     check(
       $("taskCard").contains($("progressError")) &&
         $("progressText").textContent.includes("1 / 2"),

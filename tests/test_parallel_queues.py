@@ -233,8 +233,16 @@ class ParallelQueueTests(unittest.TestCase):
         self.store.update(2, 0, "Четыре пять.", "translated", "cloud:other")
         self.store.update(2, 1, "После редактуры.", "edited", "local:fixture")
         self.store.update(3, 0, "Ручной перевод.", "translated", "human", manual=True)
+        end = int(time.time())
+        day = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(end))
+        with self.store.db() as db:
+            db.execute("UPDATE history SET at=?", (day,))
         for period in ("hour", "day", "session"):
-            result = overview(self.store, self.project, period)
+            result = overview(self.store, self.project, period, now=end)
+            if period != "session":
+                self.assertEqual(len(result["buckets"]), 20 if period == "hour" else 24)
+            self.assertLess(result["buckets"][-1]["at"], end)
+            self.assertEqual(result["buckets"][-1]["models"], result["models"])
             self.assertEqual(sum(row["lines"] for row in result["buckets"]), 2)
             self.assertEqual(sum(row["words"] for row in result["buckets"]), 5)
             self.assertEqual(

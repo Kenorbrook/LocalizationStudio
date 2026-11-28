@@ -1,4 +1,4 @@
 """Application release identity; independent of the translation database."""
 
-VERSION = "0.8.9"
+VERSION = "0.8.10"
 REPOSITORY = "Kenorbrook/LocalizationStudio"

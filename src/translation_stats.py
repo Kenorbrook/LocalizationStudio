@@ -21,7 +21,10 @@ def overview(store, project, period, now=None):
         size = {"hour": 180, "day": 3600}.get(period)
         if size is None:
             size = max(60, ((now - start + 24) // 24 + 59) // 60 * 60)
-        bins = [{"at": t, "lines": 0, "words": 0} for t in range(start, now + 1, size)]
+        bins = [
+            {"at": t, "lines": 0, "words": 0, "models": {}}
+            for t in range(start, max(now, start + 1), size)
+        ]
         models = {}
         cutoff = datetime.fromtimestamp(start).strftime("%Y-%m-%d %H:%M:%S")
         for row in db.execute(
@@ -39,8 +42,11 @@ def overview(store, project, period, now=None):
             if not start <= stamp <= now:
                 continue
             words = len(re.findall(r"[^\W_]+(?:[-’'][^\W_]+)*", row["text"]))
-            model = models.setdefault(row["reviewer"], {"lines": 0, "words": 0})
-            for event in (bins[(stamp - start) // size], model):
+            name = row["reviewer"]
+            bucket = bins[min((stamp - start) // size, len(bins) - 1)]
+            model = models.setdefault(name, {"lines": 0, "words": 0})
+            contribution = bucket["models"].setdefault(name, {"lines": 0, "words": 0})
+            for event in (bucket, model, contribution):
                 event["lines"] += 1
                 event["words"] += words
-    return {"buckets": bins, "models": models, "bucket_seconds": size}
+    return {"buckets": bins, "models": models, "bucket_seconds": size, "end": now}

@@ -26,9 +26,13 @@ def main():
         other.mkdir()
         project = store.project(str(other))["id"]
         corpus = other / "text.json"
-        corpus.write_text('[{"source":"The door is open."}]', encoding="utf-8")
+        corpus.write_text(
+            '[{"source":"The door is open."},{"source":"The light is on."}]',
+            encoding="utf-8",
+        )
         store.import_files(project, [corpus])
         store.update(1, 0, "Дверь открыта.", "translated", "cloud:fixture-model")
+        store.update(2, 0, "Свет включён.", "translated", "local:fixture-local")
         with store.db() as db:
             db.execute(
                 "INSERT INTO jobs(project,stage,provider,state,settings,done,total,current,error) VALUES (?,'translate','cloud','paused',?,1,2,1,'Fixture pause')",
