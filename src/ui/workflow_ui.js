@@ -533,22 +533,22 @@ for (const node of [...right.childNodes]) setupCard.append(node);
 right.append(taskCard, setupCard);
 const sidebarStyle = element("style");
 sidebarStyle.textContent = `
-.right{padding:16px 12px;background:#11191e;scrollbar-gutter:stable}
+.right{padding:16px 12px;background:var(--appearance-rail,#11191e);scrollbar-gutter:stable}
 #taskCard,#setupCard{border:1px solid var(--line);border-radius:12px;padding:16px 14px;min-width:0}
-#taskCard{background:#1a252b;border-top:3px solid var(--accent)}
+#taskCard{background:var(--appearance-raised,#1a252b);border-top:3px solid var(--accent)}
 #taskCard .task-heading{gap:10px;margin-bottom:8px}
 #taskCard .task-heading strong{font-size:14px}
 #taskCard #progress{display:block;width:100%;margin:14px 0 9px}
 #taskCard #progressText{font-variant-numeric:tabular-nums}
 #taskCard .ux-executor-summary{display:flex;align-items:baseline;gap:8px;margin:7px 0 12px}
 #taskCard #activeSettings{margin:0;min-width:0;overflow-wrap:anywhere}
-#taskCard #live{margin:0 0 16px;background:#111b20;max-height:240px;overflow:auto}
+#taskCard #live{margin:0 0 16px;background:var(--appearance-field,#111b20);max-height:240px;overflow:auto}
 #taskCard #mainAction{margin:0;width:100%}
 #taskCard #actionHint{margin:8px 0 14px}
-#taskCard>details{margin:0;padding:12px 0;border-top:1px solid #34434b}
+#taskCard>details{margin:0;padding:12px 0;border-top:1px solid var(--appearance-strong-line,#34434b)}
 #taskCard>details:last-of-type{padding-bottom:0}
 #taskCard>details>summary{line-height:1.5}
-#setupCard{margin-top:20px;background:#151e23}
+#setupCard{margin-top:20px;background:var(--appearance-raised,#151e23)}
 #setupCard .sidebar-heading{margin:0 0 10px;color:var(--muted);font-size:11px;letter-spacing:1px}
 #setupCard>details{margin:0;padding:13px 0;border-top:1px solid var(--line)}
 #setupCard>.sidebar-heading+details{border-top:0}

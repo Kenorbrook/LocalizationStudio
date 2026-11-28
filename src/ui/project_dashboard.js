@@ -1,14 +1,22 @@
 (() => {
   const dashboard = element("section", undefined, "project-dashboard");
   dashboard.id = "projectDashboard";
-  const progressCard = element("section", undefined, "dashboard-card");
+  const progressCard = element(
+    "section",
+    undefined,
+    "dashboard-card dashboard-progress-card",
+  );
   const progressTitle = element("h2", "Прогресс перевода");
   const progressText = element("strong");
   const meter = element("progress");
   meter.setAttribute("aria-label", "Прогресс проекта");
   const totals = element("p", undefined, "sub");
   progressCard.append(progressTitle, progressText, meter, totals);
-  const graphCard = element("section", undefined, "dashboard-card");
+  const graphCard = element(
+    "section",
+    undefined,
+    "dashboard-card dashboard-graph-card",
+  );
   const controls = element("div", undefined, "dashboard-heading");
   const period = element("select");
   const unit = element("select");
@@ -41,7 +49,11 @@
   const models = element("ul", undefined, "dashboard-models");
   const graphStatus = element("p", undefined, "sub");
   graphCard.append(controls, graphStatus, plot, scale, models);
-  const queueCard = element("section", undefined, "dashboard-card");
+  const queueCard = element(
+    "section",
+    undefined,
+    "dashboard-card dashboard-queue-card",
+  );
   const queueHead = element("div", undefined, "dashboard-heading");
   const openQueue = element("button", "Открыть очередь");
   openQueue.onclick = () => $("viewQueue").onclick();

@@ -1,9 +1,9 @@
 .journey-boundary {
-  background: #25271e;
-  border: 1px solid #706540;
+  background: var(--appearance-warning-bg, #25271e);
+  border: 1px solid var(--appearance-warning-border, #706540);
   border-radius: 8px;
   padding: 12px 14px;
-  color: #e6d69d;
+  color: var(--appearance-warning-text, #e6d69d);
   line-height: 1.5;
 }
 .journey-steps {
@@ -38,13 +38,13 @@
   color: var(--muted);
 }
 .journey-step[data-state="blocked"] {
-  border-color: #706540;
+  border-color: var(--appearance-warning-border, #706540);
 }
 .journey-step[data-state="active"] {
   border-color: var(--accent);
 }
 .journey-step[data-state="attention"] {
-  border-color: #ad8651;
+  border-color: var(--appearance-warning-border, #ad8651);
 }
 .journey-actions {
   display: flex;

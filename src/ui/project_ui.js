@@ -909,7 +909,7 @@ style.textContent += `
 .project-manager-header h1{margin:0;font-size:21px}
 #projectManagerClose{font-size:24px;line-height:1;padding:5px 11px}
 #projectManagerBody{padding:20px 24px;overflow:auto;min-height:0;scrollbar-gutter:stable}
-.manager-project{padding:14px 16px;border:1px solid var(--line);border-radius:9px;background:#121b20;overflow-wrap:anywhere}
+.manager-project{padding:14px 16px;border:1px solid var(--line);border-radius:9px;background:var(--appearance-field,#121b20);overflow-wrap:anywhere}
 .manager-project strong{display:block;margin-top:5px;font-size:16px}
 .manager-project p{margin:6px 0 0}
 .manager-group{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
@@ -918,6 +918,6 @@ style.textContent += `
 .manager-actions{display:flex;flex-direction:column;gap:10px}
 .manager-actions button{width:100%;margin:0;text-align:left;padding:11px 14px}
 .manager-danger h2{color:var(--red)}
-.manager-danger button{border-color:#694448;background:#30252a}
+.manager-danger button{border-color:var(--appearance-danger-text,#694448);background:var(--appearance-raised,#30252a)}
 .project-manager-footer{padding:14px 24px;border-top:1px solid var(--line);display:flex;justify-content:flex-end;flex-shrink:0}
 `;

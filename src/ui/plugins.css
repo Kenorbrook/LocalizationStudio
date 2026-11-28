@@ -19,9 +19,9 @@ body[data-app-view="plugins"] #projectActivity {
   text-align: left;
 }
 .plugin-navigation[aria-current="page"] {
-  background: #203a37;
-  border-color: #3d6257;
-  color: #b4f1de;
+  background: var(--appearance-selected, #203a37);
+  border-color: var(--appearance-strong-line, #3d6257);
+  color: var(--appearance-active-text, #b4f1de);
 }
 .plugins-toolbar {
   display: flex;
@@ -50,9 +50,9 @@ body[data-app-view="plugins"] #projectActivity {
   padding: 7px 10px;
 }
 .plugin-filters [aria-pressed="true"] {
-  background: #203a37;
-  border-color: #548674;
-  color: #c3f5e5;
+  background: var(--appearance-selected, #203a37);
+  border-color: var(--appearance-strong-line, #548674);
+  color: var(--appearance-active-text, #c3f5e5);
 }
 .plugin-row {
   display: grid;
@@ -98,7 +98,7 @@ body[data-app-view="plugins"] #projectActivity {
 }
 .plugin-state[data-state="enabled"] {
   color: var(--accent);
-  border-color: #416357;
+  border-color: var(--appearance-strong-line, #416357);
 }
 .plugin-state[data-state="error"],
 .plugin-state[data-state="setup"] {
@@ -137,8 +137,8 @@ body .plugin-switch input {
   width: 42px;
   height: 24px;
   border-radius: 14px;
-  background: #4a5962;
-  border: 1px solid #82919b;
+  background: var(--appearance-button, #4a5962);
+  border: 1px solid var(--appearance-strong-line, #82919b);
   position: relative;
   flex: none;
 }

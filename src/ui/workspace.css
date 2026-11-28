@@ -11,7 +11,7 @@ body {
 }
 body > header {
   height: 68px;
-  background: #141e24;
+  background: var(--appearance-header, #141e24);
   padding: 0 24px;
 }
 body > main {
@@ -28,18 +28,18 @@ body .brand small {
 }
 body main > aside:first-child {
   padding: 20px 14px 12px;
-  background: #121c22;
+  background: var(--appearance-rail, #121c22);
   display: flex;
   flex-direction: column;
   gap: 0;
 }
 body .center {
   padding: 24px 26px;
-  background: #10191f;
+  background: var(--appearance-canvas, #10191f);
 }
 body .right {
   padding: 18px 12px;
-  background: #111b21;
+  background: var(--appearance-rail, #111b21);
 }
 .header-job {
   display: flex;
@@ -75,7 +75,7 @@ body .right {
   overflow-wrap: anywhere;
 }
 #progressError {
-  color: #ffc1b3;
+  color: var(--appearance-danger-text, #ffc1b3);
   margin-block: 6px;
   line-height: 1.4;
 }
@@ -123,7 +123,7 @@ body .right {
   text-align: left;
 }
 .text-menu button:hover:not(:disabled) {
-  background: #293b43;
+  background: var(--appearance-hover, #293b43);
 }
 body button {
   transition:
@@ -142,8 +142,8 @@ body summary:focus-visible {
 body input,
 body select,
 body textarea {
-  background: #101a20;
-  border-color: #3a4c55;
+  background: var(--appearance-field, #101a20);
+  border-color: var(--appearance-strong-line, #3a4c55);
   color: var(--ink);
   border-radius: 7px;
 }
@@ -183,7 +183,7 @@ body #projectPicker {
   text-align: left;
   margin: 0 0 20px;
   background: transparent;
-  border-color: #34444d;
+  border-color: var(--appearance-strong-line, #34444d);
 }
 .ux-workspace-nav {
   display: flex;
@@ -201,7 +201,7 @@ body #projectPicker {
   background: transparent;
   padding: 11px 12px;
   font-size: 13px;
-  color: #b3c2c9;
+  color: var(--appearance-subtle-text, #b3c2c9);
 }
 .ux-nav-name {
   flex: 1;
@@ -212,19 +212,19 @@ body #projectPicker {
 }
 .ux-nav-count {
   font-size: 11px;
-  color: #aec1c9;
-  background: #25353e;
+  color: var(--appearance-subtle-text, #aec1c9);
+  background: var(--appearance-button, #25353e);
   padding: 2px 7px;
   border-radius: 5px;
 }
 .ux-workspace-nav button:hover {
-  background: #1e2c34;
+  background: var(--appearance-hover, #1e2c34);
   color: var(--ink);
 }
 .ux-workspace-nav button.is-current {
-  color: #b4f1de;
-  background: #203a37;
-  border-color: #3d6257;
+  color: var(--appearance-active-text, #b4f1de);
+  background: var(--appearance-selected, #203a37);
+  border-color: var(--appearance-strong-line, #3d6257);
   font-weight: 600;
 }
 .ux-file-tree {
@@ -271,7 +271,7 @@ body .stats {
 body .stat {
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #172229;
+  background: var(--appearance-raised, #172229);
   padding: 14px 16px;
 }
 body .stat b {
@@ -287,7 +287,7 @@ body #projectSummary {
   font-size: 11px;
   line-height: 1.7;
   margin-bottom: 26px;
-  color: #9cadb7;
+  color: var(--appearance-subtle-text, #9cadb7);
 }
 .ux-overview-grid {
   display: grid;
@@ -296,7 +296,7 @@ body #projectSummary {
   margin: 12px 0 28px;
 }
 .ux-overview-card {
-  background: #172229;
+  background: var(--appearance-raised, #172229);
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 22px;
@@ -306,7 +306,7 @@ body #projectSummary {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #c9d6dc;
+  color: var(--appearance-subtle-text, #c9d6dc);
   font-size: 12px;
   letter-spacing: 0.4px;
   margin: 0 0 18px;
@@ -319,7 +319,7 @@ body #projectSummary {
 .ux-overview-settings {
   white-space: pre-line;
   line-height: 1.8;
-  color: #b9c9d0;
+  color: var(--appearance-subtle-text, #b9c9d0);
   overflow-wrap: anywhere;
 }
 body .ux-text-button {
@@ -335,9 +335,9 @@ body .ux-text-button:hover {
 }
 body #taskCard {
   padding: 17px 14px;
-  border: 1px solid #3b514f;
+  border: 1px solid var(--appearance-strong-line, #3b514f);
   border-top: 3px solid var(--accent);
-  background: #1a292f;
+  background: var(--appearance-raised, #1a292f);
   border-radius: 12px;
 }
 body #taskCard #activeSettings {
@@ -359,7 +359,7 @@ body #taskCard #mainAction {
   font-weight: 600;
 }
 body #taskCard #progressText {
-  color: #d0dfdf;
+  color: var(--appearance-subtle-text, #d0dfdf);
   line-height: 1.65;
   margin-bottom: 8px;
 }
@@ -373,7 +373,7 @@ body #taskCard #runLimitText:empty {
   margin: 18px 0 14px;
 }
 .ux-primary-action .ux-help {
-  border-color: #6a8986;
+  border-color: var(--appearance-strong-line, #6a8986);
 }
 .ux-run-scope {
   margin-top: 14px;
@@ -384,7 +384,7 @@ body #taskCard #runLimitText:empty {
 body #taskCard > details {
   padding: 12px 0;
   margin-top: 10px;
-  border-top-color: #35484d;
+  border-top-color: var(--appearance-strong-line, #35484d);
 }
 body #newRunLimits {
   padding-top: 14px;
@@ -401,7 +401,7 @@ body #taskCard #logDetails pre {
 body #setupCard {
   margin-top: 18px;
   padding: 16px 14px;
-  background: #162128;
+  background: var(--appearance-raised, #162128);
 }
 body #setupCard h2 {
   font-size: 10px;
@@ -429,9 +429,9 @@ body .ux-help {
   width: 22px;
   height: 22px;
   padding: 0;
-  border: 1px solid #557079;
+  border: 1px solid var(--appearance-strong-line, #557079);
   border-radius: 50%;
-  color: #bdcfd4;
+  color: var(--appearance-subtle-text, #bdcfd4);
   background: transparent;
   font:
     600 12px "Segoe UI",
@@ -444,7 +444,7 @@ body .ux-help {
 }
 body .ux-help:hover,
 body .ux-help:focus-visible {
-  background: #2a4149;
+  background: var(--appearance-hover, #2a4149);
   border-color: var(--accent);
   color: var(--ink);
 }
@@ -456,9 +456,9 @@ body .ux-help:focus-visible {
   max-height: min(400px, 70vh);
   overflow: auto;
   padding: 13px 16px;
-  background: #243841;
+  background: var(--appearance-raised, #243841);
   color: #edf4f5;
-  border: 1px solid #58717b;
+  border: 1px solid var(--appearance-strong-line, #58717b);
   border-radius: 9px;
   box-shadow: 0 8px 30px #0006;
   font:
@@ -478,8 +478,8 @@ body .ux-project-settings {
   height: min(760px, calc(100vh - 64px));
   padding: 0;
   border-radius: 15px;
-  background: #172229;
-  border-color: #40515b;
+  background: var(--appearance-raised, #172229);
+  border-color: var(--appearance-strong-line, #40515b);
   overflow: hidden;
 }
 .ux-project-settings[open] {
@@ -516,7 +516,7 @@ body .ux-close {
   min-height: 0;
 }
 .ux-settings-tabs {
-  background: #131e24;
+  background: var(--appearance-raised, #131e24);
   border-right: 1px solid var(--line);
   padding: 18px 12px;
   display: flex;
@@ -533,9 +533,9 @@ body .ux-close {
   font-size: 13px;
 }
 .ux-settings-tabs button[aria-selected="true"] {
-  color: #b2efdc;
-  background: #223d39;
-  border-color: #385c51;
+  color: var(--appearance-active-text, #b2efdc);
+  background: var(--appearance-selected, #223d39);
+  border-color: var(--appearance-strong-line, #385c51);
 }
 .ux-settings-content {
   overflow: auto;
@@ -606,7 +606,7 @@ body .ux-tooltip.disabled-explanation {
   width: 100%;
 }
 .ux-field-caption label {
-  color: #c1d0d7;
+  color: var(--appearance-subtle-text, #c1d0d7);
   font-size: 13px;
 }
 body .ux-field > input,
@@ -651,7 +651,7 @@ body .ux-toggle input {
   gap: 10px;
   justify-content: flex-end;
   flex-shrink: 0;
-  background: #152027;
+  background: var(--appearance-raised, #152027);
 }
 .ux-dialog-footer button {
   min-width: 108px;
@@ -670,7 +670,7 @@ body .ux-toggle input {
 }
 .ux-project-path {
   color: var(--muted);
-  background: #111b21;
+  background: var(--appearance-rail, #111b21);
   border-radius: 7px;
   padding: 12px;
   overflow-wrap: anywhere;
@@ -703,7 +703,7 @@ body .ux-toggle input {
 }
 .ux-settings-content #historySettings label {
   font-size: 13px;
-  color: #c1d0d7;
+  color: var(--appearance-subtle-text, #c1d0d7);
 }
 .ux-settings-content #historySettings > button {
   margin-top: 14px;

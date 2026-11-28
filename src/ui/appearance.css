@@ -1,0 +1,375 @@
+/* The classic palette remains in the component stylesheets. */
+.appearance-setting {
+  display: grid;
+  grid-template-columns: 1fr minmax(0, 240px);
+  align-items: center;
+  gap: 14px;
+  margin: 0 0 16px;
+}
+.appearance-setting select {
+  width: 100%;
+}
+html[data-theme]:where(:not([data-theme="studio"])) {
+  accent-color: var(--accent);
+  --appearance-subtle-text: var(--muted);
+  --appearance-strong-line: color-mix(in srgb, var(--muted) 55%, var(--line));
+  --appearance-primary-text: var(--bg);
+  --appearance-primary-hover: color-mix(in srgb, var(--accent) 90%, var(--ink));
+  --appearance-active-text: var(--ink);
+  --appearance-danger-text: var(--red);
+  --appearance-warning-text: var(--yellow);
+  --appearance-warning-bg: color-mix(in srgb, var(--panel) 90%, var(--yellow));
+  --appearance-warning-border: var(--yellow);
+  --appearance-selected: color-mix(in srgb, var(--panel) 83%, var(--accent));
+  --appearance-raised: var(--panel);
+  --appearance-hover: color-mix(
+    in srgb,
+    var(--appearance-button) 82%,
+    var(--ink)
+  );
+}
+html[data-theme]:not([data-theme="studio"]) body {
+  font-family: var(--appearance-font, "Segoe UI", sans-serif);
+}
+html[data-theme]:not([data-theme="studio"])
+  :is(.brand, .center > h1, .dashboard-card h2) {
+  font-family: var(--appearance-heading, inherit);
+}
+html[data-theme]:not([data-theme="studio"])
+  :is(button, input, select, textarea, .dashboard-card) {
+  border-radius: var(--appearance-radius, 7px);
+}
+html[data-theme]:not([data-theme="studio"]) .dashboard-card {
+  background: var(--appearance-card, var(--panel));
+  box-shadow: var(--appearance-shadow, none);
+}
+html[data-theme]:not([data-theme="studio"]) .dashboard-segment {
+  background-image: var(--appearance-meter, none);
+}
+html[data-theme]:not([data-theme="studio"]) .compact-jobs button {
+  border-left: 3px solid var(--line);
+}
+html[data-theme]:not([data-theme="studio"]) :focus-visible {
+  outline-color: var(--accent);
+}
+html:is(
+  [data-theme="paper"],
+  [data-theme="book"],
+  [data-theme="print"],
+  [data-theme="city"],
+  [data-theme="garden"]
+) {
+  color-scheme: light;
+  --red: #a12134;
+  --green: #225f3f;
+  --yellow: #714a0a;
+  --appearance-primary-text: #fff;
+}
+html:where(
+    [data-theme="paper"],
+    [data-theme="book"],
+    [data-theme="print"],
+    [data-theme="city"],
+    [data-theme="garden"]
+  )
+  :is(.dashboard-bar, .dashboard-swatch) {
+  filter: brightness(0.7) saturate(1.28);
+}
+html[data-theme="paper"] {
+  --bg: #e9ddc3;
+  --panel: #fff3d9;
+  --ink: #30251b;
+  --muted: #62503b;
+  --line: #bcaa8a;
+  --accent: #963e2b;
+  --appearance-field: #fff9ec;
+  --appearance-button: #eedec0;
+  --appearance-header:
+    url("/paper-grain.png"),
+    linear-gradient(105deg, #e4cca3, #f2e5c8 62%, #d6b786);
+  --appearance-rail: url("/paper-grain.png"), #e9d8b5;
+  --appearance-canvas:
+    url("/paper-grain.png"),
+    repeating-linear-gradient(0deg, transparent 0 23px, #8d9a7929 23px 24px),
+    repeating-linear-gradient(90deg, #f3e8cc 0 23px, #d4d7b9 23px 24px);
+  --appearance-card:
+    url("/paper-grain.png"), linear-gradient(170deg, #fff6df, #f1e2c2);
+  --appearance-shadow: 2px 4px 0 #795b3131, inset 0 -4px 10px #a77c3b35;
+  --appearance-heading: Georgia, serif;
+  --appearance-radius: 3px;
+}
+[data-theme="paper"] .dashboard-progress-card {
+  border-left: 5px solid #a8533a;
+}
+[data-theme="paper"] .dashboard-queue-card {
+  border-top: 4px solid #69734c;
+}
+html[data-theme="book"] {
+  --bg: #ead8b9;
+  --panel: #fff7df;
+  --ink: #38241f;
+  --muted: #6d4b45;
+  --line: #cab596;
+  --accent: #762a44;
+  --appearance-field: #fff9ea;
+  --appearance-button: #efdfc6;
+  --appearance-header:
+    url("/paper-grain.png"),
+    linear-gradient(100deg, #441c34, #772e4b 60%, #4f2239);
+  --appearance-rail:
+    url("/paper-grain.png"),
+    linear-gradient(100deg, #e7d1a8, #f6e8ce 93%, #cdb381);
+  --appearance-canvas:
+    linear-gradient(
+      90deg,
+      #b0875d55,
+      transparent 6% 48%,
+      #7f54212e 50%,
+      transparent 52% 94%,
+      #ae825643
+    ),
+    url("/paper-grain.png"), #f6ebd2;
+  --appearance-card: linear-gradient(100deg, #fff8e6, #fff6de 92%, #ebd6af);
+  --appearance-heading: Georgia, "Times New Roman", serif;
+  --appearance-radius: 2px;
+}
+[data-theme="book"] body > header {
+  color: #ffefd0;
+  border-bottom: 4px double #d1ad72;
+}
+[data-theme="book"] .brand small {
+  color: #f0d1a2;
+}
+[data-theme="book"] .dashboard-card {
+  border-width: 0 0 1px;
+}
+[data-theme="book"] .dashboard-card h2 {
+  font-size: 1.18rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+[data-theme="book"] .dashboard-graph {
+  height: 144px;
+}
+html[data-theme="print"] {
+  --bg: #e7e5dc;
+  --panel: #f9f7ed;
+  --ink: #181815;
+  --muted: #514a40;
+  --line: #292825;
+  --accent: #b3340b;
+  --appearance-field: #fffdf3;
+  --appearance-button: #e8e3d4;
+  --appearance-header:
+    url("/ink-grain.png"), linear-gradient(106deg, #242320, #121210);
+  --appearance-rail: url("/ink-grain.png"), #e6e1d4;
+  --appearance-canvas: url("/ink-grain.png"), #f2efdf;
+  --appearance-card: url("/ink-grain.png"), #fbf8ed;
+  --appearance-shadow: 4px 4px #22221d;
+  --appearance-heading: "Arial Black", "Segoe UI", sans-serif;
+  --appearance-radius: 0;
+}
+[data-theme="print"] body > header {
+  color: #fff9e7;
+  border-bottom: 6px solid #eb5522;
+}
+[data-theme="print"] .brand small {
+  color: #f7af82;
+}
+[data-theme="print"] .dashboard-card {
+  border-width: 2px;
+}
+[data-theme="print"] .dashboard-bar {
+  border-radius: 0;
+}
+html[data-theme="console"] {
+  --bg: #211915;
+  --panel: #332923;
+  --ink: #f6e8cc;
+  --muted: #d7bda3;
+  --line: #6c5748;
+  --accent: #ffb756;
+  --red: #ffa38b;
+  --green: #c8df9d;
+  --appearance-field: #1c1714;
+  --appearance-button: #42352d;
+  --appearance-header:
+    url("/metal-grain.png"), linear-gradient(#59483d, #26201c);
+  --appearance-rail:
+    url("/metal-grain.png"), linear-gradient(90deg, #372c25, #201a16);
+  --appearance-canvas: url("/metal-grain.png"), #25201c;
+  --appearance-card:
+    url("/metal-grain.png"), linear-gradient(160deg, #3b3029, #231d19);
+  --appearance-shadow: inset 0 1px #ad8d7865, 0 4px 0 #151210;
+  --appearance-heading: Consolas, monospace;
+  --appearance-meter: repeating-linear-gradient(
+    0deg,
+    #1f150b 0 2px,
+    transparent 2px 8px
+  );
+  --appearance-radius: 4px;
+}
+[data-theme="console"] .dashboard-progress-card,
+[data-theme="console"] .dashboard-graph-card {
+  border-top: 2px solid #c38a52;
+}
+[data-theme="console"] .dashboard-graph {
+  height: 95px;
+}
+html[data-theme="polar"] {
+  --bg: #101a34;
+  --panel: #222f57;
+  --ink: #f4f6ff;
+  --muted: #c8d5f6;
+  --line: #6575a9;
+  --accent: #8fe6ff;
+  --red: #ffb2c1;
+  --green: #a6ffd9;
+  --appearance-field: #162245;
+  --appearance-button: #304271;
+  --appearance-header: linear-gradient(110deg, #172a50, #254379 46%, #573c83);
+  --appearance-rail: linear-gradient(165deg, #2b4470, #172449 45%, #202149);
+  --appearance-canvas:
+    radial-gradient(ellipse at 8% 3%, #326fa2, transparent 55%),
+    radial-gradient(ellipse at 100% 18%, #734b9b, transparent 55%),
+    linear-gradient(153deg, #132343, #201943);
+  --appearance-card: linear-gradient(130deg, #31497c, #272c5c 55%, #4b386e);
+  --appearance-shadow: inset 0 1px #b4d7ff80, 0 9px 26px #0a113353;
+  --appearance-radius: 15px;
+}
+[data-theme="polar"] .dashboard-progress-card {
+  background: linear-gradient(115deg, #22517f, #413f84 69%, #684886);
+}
+[data-theme="polar"] .dashboard-bar {
+  border-radius: 8px 8px 0 0;
+}
+html[data-theme="city"] {
+  --bg: #e6e9e9;
+  --panel: #f6f8f6;
+  --ink: #142947;
+  --muted: #455972;
+  --line: #a3b4c9;
+  --accent: #154d9d;
+  --appearance-field: #fff;
+  --appearance-button: #dce5ed;
+  --appearance-header: linear-gradient(90deg, #123467, #225a9d);
+  --appearance-rail: repeating-linear-gradient(
+    125deg,
+    #c6d3df 0 1px,
+    #dbe3eb 1px 15px
+  );
+  --appearance-canvas: linear-gradient(145deg, #eef3f1, #dce5ed);
+  --appearance-heading: "Bahnschrift", "Segoe UI", sans-serif;
+  --appearance-shadow: 0 3px 0 #b0c3d4;
+  --appearance-radius: 3px;
+}
+[data-theme="city"] body > header {
+  color: #fff;
+  border-bottom: 5px solid #f9cc41;
+}
+[data-theme="city"] .brand small {
+  color: #ffdc59;
+}
+[data-theme="city"] .dashboard-card {
+  border-left: 7px solid #2560a7;
+}
+[data-theme="city"] .dashboard-queue-card {
+  border-left-color: #e3af23;
+}
+html[data-theme="film"] {
+  --bg: #211829;
+  --panel: #312238;
+  --ink: #fff1ff;
+  --muted: #d9b9df;
+  --line: #73557b;
+  --accent: #ffaecf;
+  --red: #ff9d9d;
+  --green: #afe4ce;
+  --appearance-field: #221528;
+  --appearance-button: #45304d;
+  --appearance-header:
+    url("/ink-grain.png"), linear-gradient(90deg, #211828, #3d2746 67%, #612d57);
+  --appearance-rail: linear-gradient(165deg, #271b31, #39223c);
+  --appearance-canvas:
+    url("/ink-grain.png"),
+    radial-gradient(ellipse at 85% 5%, #53284d, #211829 66%);
+  --appearance-shadow: 0 6px 18px #170d1d5c;
+  --appearance-heading: "Bahnschrift", "Segoe UI", sans-serif;
+  --appearance-radius: 6px;
+}
+[data-theme="film"] .dashboard-progress-card {
+  background: linear-gradient(110deg, #4d2e54, #2d2035);
+}
+[data-theme="film"] .dashboard-graph-card {
+  border-top: 8px solid transparent;
+  background:
+    repeating-linear-gradient(
+        90deg,
+        #120e1a 0 14px,
+        #a178ad 14px 20px,
+        #120e1a 20px 28px
+      )
+      border-box,
+    var(--panel);
+  background-size:
+    100% 8px,
+    auto;
+  background-position:
+    top left,
+    center;
+  background-repeat: no-repeat;
+  background-origin: border-box, padding-box;
+}
+html[data-theme="garden"] {
+  --bg: #e7e7cf;
+  --panel: #f9f4df;
+  --ink: #24392d;
+  --muted: #485b49;
+  --line: #a5ad8f;
+  --accent: #325d46;
+  --appearance-field: #fffbea;
+  --appearance-button: #e4e9cf;
+  --appearance-header:
+    url("/paper-grain.png"),
+    linear-gradient(104deg, #d0ddae, #f4e9ce 63%, #e9c5b6);
+  --appearance-rail:
+    url("/paper-grain.png"), linear-gradient(165deg, #e5ebd2, #c6d6b4);
+  --appearance-canvas:
+    url("/paper-grain.png"),
+    radial-gradient(ellipse at 100% 2%, #eed3c5, #eeedd5 50%, #d1dfbd);
+  --appearance-card: url("/paper-grain.png"), #fbf8e5;
+  --appearance-shadow: 0 3px 11px #48624720;
+  --appearance-heading: Georgia, serif;
+  --appearance-radius: 14px;
+}
+[data-theme="garden"] .dashboard-progress-card {
+  background:
+    url("/botanical.png") right 14px bottom 6px / auto 95% no-repeat,
+    url("/paper-grain.png"),
+    linear-gradient(96deg, #f0f2d8, #d8e3be);
+  padding-right: 108px;
+}
+[data-theme="garden"] .dashboard-graph-card {
+  border-radius: 24px 24px 6px 6px;
+}
+@media (min-width: 1280px) {
+  :is(
+      [data-theme="book"],
+      [data-theme="print"],
+      [data-theme="film"],
+      [data-theme="city"]
+    )
+    .project-dashboard {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
+    align-items: start;
+  }
+  :is([data-theme="book"], [data-theme="print"], [data-theme="film"])
+    .dashboard-queue-card,
+  [data-theme="city"] .dashboard-progress-card,
+  [data-theme] .dashboard-empty {
+    grid-column: 1 / -1;
+  }
+  [data-theme="city"] .project-dashboard {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  }
+}

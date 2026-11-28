@@ -3,6 +3,7 @@
 import json, secrets, webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
+from appearance import read_theme
 from core import UI_ROOT, dump
 from read_routes import read_request, UnknownRoute
 from commands import dispatch
@@ -14,11 +15,15 @@ UI_RESOURCES = {
         (
             "text/css; charset=utf-8"
             if path.suffix == ".css"
-            else "text/javascript; charset=utf-8"
+            else (
+                "image/png"
+                if path.suffix == ".png"
+                else "text/javascript; charset=utf-8"
+            )
         ),
     )
     for path in UI_ROOT.iterdir()
-    if path.suffix in {".js", ".css"}
+    if path.suffix in {".js", ".css", ".png"}
 }
 
 
@@ -35,7 +40,10 @@ def serve(store, port, open_browser, ready=None, inspection=None, plugins=None):
             pass
 
         def respond(self, data, status=200, kind="application/json; charset=utf-8"):
-            body = data.encode() if isinstance(data, str) else dump(data).encode()
+            if isinstance(data, bytes):
+                body = data
+            else:
+                body = data.encode() if isinstance(data, str) else dump(data).encode()
             self.send_response(status)
             self.send_header("Content-Type", kind)
             self.send_header("Content-Length", str(len(body)))
@@ -62,6 +70,7 @@ def serve(store, port, open_browser, ready=None, inspection=None, plugins=None):
                         (UI_ROOT / "index.html")
                         .read_text(encoding="utf-8")
                         .replace("__TOKEN__", token)
+                        .replace("__THEME__", read_theme(store.path))
                     )
                     return self.respond(html, kind="text/html; charset=utf-8")
                 if plugins and url.path.startswith("/plugins/"):
@@ -76,8 +85,7 @@ def serve(store, port, open_browser, ready=None, inspection=None, plugins=None):
                 if resource:
                     filename, content_type = resource
                     return self.respond(
-                        (UI_ROOT / filename).read_text(encoding="utf-8"),
-                        kind=content_type,
+                        (UI_ROOT / filename).read_bytes(), kind=content_type
                     )
                 if self.headers.get("X-Studio-Token") != token:
                     return self.respond({"error": "Нужен токен приложения"}, 403)

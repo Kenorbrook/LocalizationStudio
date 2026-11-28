@@ -30,13 +30,13 @@ textarea {
 button {
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #263239;
+  background: var(--appearance-button, #263239);
   color: var(--ink);
   padding: 9px 13px;
   cursor: pointer;
 }
 button:hover {
-  background: #34474f;
+  background: var(--appearance-hover, #34474f);
 }
 button:disabled {
   opacity: 0.45;
@@ -44,19 +44,19 @@ button:disabled {
 }
 .primary {
   background: var(--accent);
-  color: #112c22;
+  color: var(--appearance-primary-text, #112c22);
   border: 0;
   font-weight: 600;
 }
 .primary:hover {
-  background: #b2efdc;
+  background: var(--appearance-primary-hover, #b2efdc);
 }
 input,
 select,
 textarea {
   border: 1px solid var(--line);
   border-radius: 7px;
-  background: #121b20;
+  background: var(--appearance-field, #121b20);
   color: var(--ink);
   padding: 10px;
   outline: none;
@@ -144,7 +144,7 @@ h2 {
 }
 .file:hover,
 .file.active {
-  background: #26383d;
+  background: var(--appearance-button, #26383d);
 }
 .file strong {
   display: block;
@@ -252,7 +252,7 @@ progress {
   margin: 16px 0 10px;
 }
 .live {
-  background: #111b20;
+  background: var(--appearance-field, #111b20);
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 13px;
@@ -343,7 +343,7 @@ pre {
   left: 50%;
   transform: translateX(-50%);
   max-width: 700px;
-  background: #284439;
+  background: var(--appearance-selected, #284439);
   padding: 13px 20px;
   border-radius: 8px;
   display: none;

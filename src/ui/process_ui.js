@@ -650,7 +650,7 @@ textPreviewStyle.textContent = `
 .record .translation textarea{display:block;min-height:0!important;resize:none!important;overflow:hidden!important;white-space:pre-wrap;overflow-wrap:anywhere;scrollbar-width:none}
 .record .translation textarea::-webkit-scrollbar{display:none}
 .record .record-expand{display:block;margin:0 auto 10px;padding:4px 13px;background:transparent;border-color:transparent;color:var(--muted);font-size:12px}
-.record .record-expand:hover{background:#263239;color:var(--ink)}
+.record .record-expand:hover{background:var(--appearance-button,#263239);color:var(--ink)}
 `;
 document.head.append(textPreviewStyle);
 const recordExpansion = new Map(),

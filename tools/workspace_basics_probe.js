@@ -52,6 +52,44 @@ void (async () => {
           JSON.stringify(colors(".dashboard-swatch")),
       "hour chart has no spare column and stacks distinct colors matching its legend",
     );
+    openAppSettings();
+    const appearance = $("appTheme");
+    check(
+      updatesDialog.contains(appearance) && appearance.value === "studio" &&
+        appearance.options.length === 9,
+      "app settings offer eight themes and classic",
+    );
+    const center = document.querySelector(".center");
+    const signatures = new Set();
+    for (const option of appearance.options) {
+      appearance.value = option.value;
+      await appearance.onchange();
+      const canvas = getComputedStyle(center);
+      signatures.add(canvas.backgroundColor + canvas.backgroundImage);
+      check(
+        document.documentElement.dataset.theme === option.value &&
+          appearance.value === option.value &&
+          center.scrollWidth <= center.clientWidth + 1,
+        "theme applies without overflow: " + option.value,
+      );
+    }
+    check(signatures.size === 9, "nine distinct canvas treatments");
+    const savedPage = await fetch("/").then((response) => response.text());
+    check(
+      savedPage.includes('data-theme="garden"'),
+      "next window restores saved theme before rendering",
+    );
+    for (const name of ["paper-grain", "ink-grain", "metal-grain", "botanical"]) {
+      const response = await fetch("/" + name + ".png");
+      check(
+        response.ok && response.headers.get("Content-Type") === "image/png" &&
+          (await response.blob()).size > 1000,
+        "packaged theme artwork: " + name,
+      );
+    }
+    appearance.value = "studio";
+    await appearance.onchange();
+    updatesDialog.close();
     const latestBar = bars[bars.length - 1];
     latestBar.dispatchEvent(new MouseEvent("mouseenter"));
     check(

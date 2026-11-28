@@ -2,6 +2,7 @@
 
 import webbrowser
 
+from appearance import write_theme
 from close_behavior import CloseApi
 from version import REPOSITORY
 
@@ -20,6 +21,10 @@ class DesktopApi(CloseApi):
             if self._store is not None
             else None
         )
+
+    def set_app_theme(self, theme):
+        with self._controller.lock:
+            return write_theme(self._controller.store.path, theme)
 
     def choose_project_folder(self, current=""):
         from pathlib import Path
