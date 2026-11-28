@@ -443,10 +443,29 @@ void (async () => {
           $("jobLog").textContent.includes("Review fixture log"),
         "parallel selection targets the new task and its own queue and log",
       );
-      const reviewOptions = document.querySelector(
-        '.queue-options[data-job="99"]',
+      const queueRow = document.querySelector('.parallel-queue-row[data-job="99"]');
+      const reviewTitle = queueRow.querySelector(".parallel-queue-title");
+      const queueList = queueRow.parentElement;
+      queueList.style.maxWidth = "360px";
+      const more = [...queueRow.querySelectorAll("button")].find(
+        (item) => item.textContent === "Дополнительно",
       );
-      reviewOptions.open = true;
+      const bounds = () => [
+        queueRow.getBoundingClientRect().height,
+        reviewTitle.getBoundingClientRect().width,
+        reviewTitle.getBoundingClientRect().height,
+      ];
+      const closedBounds = bounds();
+      more.click();
+      const reviewOptions = $("queueMenu");
+      check(
+        reviewOptions.open &&
+          bounds().every((value, index) => value === closedBounds[index]) &&
+          closedBounds[2] < 70 &&
+          queueRow.querySelector(".queue-parameters").textContent.includes("Лимит ответа"),
+        "queue actions overlay keeps the narrow card and title unchanged",
+      );
+      queueList.style.maxWidth = "";
       const action = (name) =>
         [...reviewOptions.querySelectorAll("button")].find(
           (item) => item.textContent === name,
@@ -458,6 +477,19 @@ void (async () => {
         "queue menu opens a separate journal for the selected task",
       );
       $("fullJobLog").close();
+      more.click();
+      const remove = action("Удалить очередь");
+      remove.click();
+      check(
+        !reviewOptions.open &&
+          $("infoDialog").open &&
+          $("infoTitle").textContent.includes("#99") &&
+          $("infoContent").querySelector("button.queue-remove").textContent === "Удалить очередь" &&
+          $("infoContent").textContent.includes("Готовые переводы останутся"),
+        "removing a queue requires confirmation and names the affected queue",
+      );
+      $("infoDialog").close();
+      more.click();
       await action("Настроить").onclick();
       check(
         $("parallelQueueDialog").open &&

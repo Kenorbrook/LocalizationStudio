@@ -232,6 +232,87 @@ const projectQueues = (() => {
   function queueTitle(job) {
     return (stageTitles[job.stage] || "Задача") + " · " + modelLabel(job);
   }
+  const queueMenuActions = element("div", undefined, "queue-menu-actions");
+  const queueMenuName = element("p", undefined, "sub queue-menu-name");
+  const queueMenuBody = element("div");
+  queueMenuBody.append(queueMenuName, queueMenuActions);
+  const queueMenu = settingsPopup("queueMenu", "Дополнительно", queueMenuBody);
+
+  function showQueueMenu(job) {
+    setText(queueMenuName, queueTitle(job));
+    queueMenuActions.replaceChildren();
+    const queues = activeQueues();
+    const edit = element("button", "Настроить");
+    edit.disabled =
+      job.worker_active || !["paused", "waiting", "held"].includes(job.state);
+    edit.onclick = guard(() => {
+      queueMenu.close();
+      return open(false, job);
+    });
+    queueMenuActions.append(
+      workspaceUi.disabledReason(edit, () =>
+        job.worker_active || job.state === "running"
+          ? "Приостановите задачу и дождитесь завершения запроса"
+          : "Подождите, пока очередь запустится",
+      ),
+    );
+    if (job.state === "waiting") {
+      const startNow = element("button", "Запустить сейчас");
+      startNow.onclick = guard(async () => {
+        if (studioState.dirty.size)
+          throw Error("Сохраните или отмените правки");
+        queueMenu.close();
+        await request("control", {
+          id: job.id,
+          mode: "start",
+          preserve_project_settings: true,
+        });
+        await refresh();
+      });
+      queueMenuActions.append(startNow);
+      const waiting = queues.filter((item) => item.state === "waiting");
+      for (const [direction, label] of [
+        ["up", "Поднять"],
+        ["down", "Опустить"],
+      ]) {
+        const priority = element("button", label);
+        priority.disabled =
+          waiting[direction === "up" ? 0 : waiting.length - 1]?.id === job.id;
+        priority.onclick = guard(async () => {
+          queueMenu.close();
+          await request("queue-priority", { id: job.id, direction });
+          await refresh();
+        });
+        queueMenuActions.append(priority);
+      }
+    }
+    const log = element("button", "Журнал");
+    log.onclick = guard(() => {
+      queueMenu.close();
+      return showJobLog(job);
+    });
+    queueMenuActions.append(log);
+    const remove = element("button", "Удалить очередь", "queue-remove");
+    remove.onclick = () => {
+      queueMenu.close();
+      setText($("infoTitle"), "Удалить очередь #" + job.id + "?");
+      const confirm = element("button", "Удалить очередь", "queue-remove");
+      confirm.onclick = guard(async () => {
+        await request("control", { id: job.id, mode: "cancel" });
+        $("infoDialog").close();
+        await refresh();
+      });
+      $("infoContent").replaceChildren(
+        element("p", queueTitle(job)),
+        element("p", "Готовые переводы останутся в проекте.", "sub"),
+        confirm,
+      );
+      $("infoDialog").showModal();
+    };
+    queueMenuActions.append(remove);
+    queueMenu.showModal();
+  }
+
   let rendered = "";
   function render() {
     const queues = activeQueues();
@@ -259,11 +340,6 @@ const projectQueues = (() => {
     );
     if (rendered === signature) return;
     rendered = signature;
-    const expanded = new Set(
-      [...overview.querySelectorAll("details[open]")].map(
-        (node) => node.dataset.job,
-      ),
-    );
     overview.replaceChildren(
       ...queues.map((job) => {
         const row = element("div", undefined, "parallel-queue-row");
@@ -289,131 +365,66 @@ const projectQueues = (() => {
             jobCount(job),
           "sub",
         );
-        const controls = element("div", undefined, "flex wrap");
-        const options = element("details", undefined, "queue-options");
-        options.dataset.job = job.id;
-        options.open = expanded.has(String(job.id));
-        options.append(element("summary", "Действия"));
+        const controls = element("div", undefined, "queue-row-controls");
         const parameters = JSON.parse(job.settings || "{}");
-        options.append(
-          element(
-            "p",
-            [
-              (parameters.source_language || "English") +
-                " → " +
-                (parameters.target_language || "Russian"),
-              "Контекст: " +
-                (parameters.context || 8192).toLocaleString("ru-RU") +
-                " токенов",
-              "Лимит ответа: " +
-                (parameters.max_output || 1200).toLocaleString("ru-RU") +
-                " токенов",
-              "Соседние фразы: " +
-                (parameters.context_before ?? 12) +
-                " до, " +
-                (parameters.context_after ?? 8) +
-                " после",
-            ].join("\n"),
-            "queue-parameters",
-          ),
+        const summary = element("div", undefined, "queue-parameters sub");
+        summary.append(
+          ...[
+            (parameters.source_language || "English") +
+              " → " +
+              (parameters.target_language || "Russian"),
+            "Контекст " +
+              (parameters.context || 8192).toLocaleString("ru-RU") +
+              " токенов",
+            "Лимит ответа " +
+              (parameters.max_output || 1200).toLocaleString("ru-RU") +
+              " токенов",
+            "Соседние фразы " +
+              (parameters.context_before ?? 12) +
+              " до / " +
+              (parameters.context_after ?? 8) +
+              " после",
+          ].map((label) => element("span", label)),
         );
-        const edit = element("button", "Настроить");
-        edit.disabled =
-          job.worker_active ||
-          !["paused", "waiting", "held"].includes(job.state);
-        edit.onclick = guard(() => open(false, job));
-        options.append(
-          workspaceUi.disabledReason(edit, () =>
-            job.worker_active || job.state === "running"
-              ? "Приостановите задачу и дождитесь завершения запроса"
-              : "Подождите, пока очередь запустится",
-          ),
+        const diagnostics = element(
+          "div",
+          undefined,
+          "queue-row-diagnostics sub",
         );
-        if (job.state === "waiting") {
-          const startNow = element("button", "Запустить сейчас");
-          startNow.onclick = guard(async () => {
-            if (studioState.dirty.size)
-              throw Error("Сохраните или отмените правки");
-            await request("control", {
-              id: job.id,
-              mode: "start",
-              preserve_project_settings: true,
-            });
-            await refresh();
-          });
-          options.append(startNow);
-          const waiting = queues.filter((item) => item.state === "waiting");
-          for (const [direction, label] of [
-            ["up", "Поднять"],
-            ["down", "Опустить"],
-          ]) {
-            const priority = element("button", label);
-            priority.disabled =
-              waiting[direction === "up" ? 0 : waiting.length - 1]?.id ===
-              job.id;
-            priority.onclick = guard(async () => {
-              await request("queue-priority", { id: job.id, direction });
-              await refresh();
-            });
-            options.append(priority);
-          }
-        }
-        const log = element("button", "Журнал");
-        log.onclick = guard(() => showJobLog(job));
-        options.append(log);
         if (job.error)
-          detail.append(element("span", job.error, "queue-diagnostic"));
+          diagnostics.append(element("span", job.error, "queue-diagnostic"));
         if (parameters.run_lines || parameters.run_minutes) {
           const limit = job.run_started
             ? describeRunProgress(job).text
             : parameters.run_lines
               ? "Лимит запуска: " + parameters.run_lines + " строк"
               : "Лимит запуска: " + parameters.run_minutes + " мин";
-          detail.append(element("span", limit, "queue-diagnostic"));
+          diagnostics.append(element("span", limit, "queue-diagnostic"));
         }
-        for (const [mode, caption] of [
-          [
-            job.state === "running" ? "pause" : "resume",
-            job.state === "running" ? "Пауза" : "Продолжить",
-          ],
-          ["cancel", "Отменить"],
-        ]) {
-          const button = element("button", caption);
-          button.disabled =
-            mode === "resume" &&
-            (job.worker_active || !["paused", "held"].includes(job.state));
-          if (mode === "resume" && ["queued", "waiting"].includes(job.state))
-            continue;
+        if (!["queued", "waiting"].includes(job.state)) {
+          const running = job.state === "running";
+          const button = element("button", running ? "Пауза" : "Продолжить");
+          button.disabled = !running && job.worker_active;
           button.onclick = guard(async () => {
-            if (mode === "cancel") {
-              setText($("infoTitle"), "Отменить задачу #" + job.id + "?");
-              const confirm = element("button", "Отменить задачу");
-              confirm.onclick = guard(async () => {
-                await request("control", { id: job.id, mode });
-                $("infoDialog").close();
-                await refresh();
-              });
-              $("infoContent").replaceChildren(
-                element("p", queueTitle(job)),
-                confirm,
-              );
-              $("infoDialog").showModal();
-              return;
-            }
-            if (mode === "resume" && studioState.dirty.size)
+            if (!running && studioState.dirty.size)
               throw Error("Сохраните или отмените правки");
             await request("control", {
               id: job.id,
-              mode,
+              mode: running ? "pause" : "resume",
               preserve_project_settings: true,
             });
             await refresh();
           });
-          if (mode === "cancel") options.append(button);
-          else controls.append(button);
+          controls.append(button);
         }
-        controls.append(options);
-        row.append(title, detail, controls);
+        const more = element("button", "Дополнительно");
+        more.setAttribute("aria-haspopup", "dialog");
+        more.onclick = () => showQueueMenu(job);
+        controls.append(more);
+        row.dataset.job = job.id;
+        title.title = title.textContent;
+        row.append(title, detail, controls, summary);
+        if (diagnostics.childElementCount) row.append(diagnostics);
         return row;
       }),
     );

@@ -809,11 +809,33 @@ dialog.settings-popup[open] {
   padding-top: 8px;
 }
 .parallel-queue-title {
+  min-width: 0;
   text-align: left;
-  overflow-wrap: anywhere;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .parallel-queue-title[aria-pressed="true"] {
   border-color: var(--accent);
+}
+.queue-row-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.queue-parameters,
+.queue-row-diagnostics {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.queue-parameters span + span::before {
+  content: "·";
+  margin-right: 8px;
+  color: var(--muted);
 }
 .parallel-form label {
   display: grid;
@@ -826,7 +848,7 @@ dialog.settings-popup[open] {
   .parallel-queue-row {
     grid-template-columns: minmax(0, 1fr) auto;
   }
-  .parallel-queue-row > div {
+  .queue-row-controls {
     grid-column: 1 / -1;
   }
 }
@@ -953,14 +975,25 @@ dialog.settings-popup[open] {
 .compact-job-error {
   color: var(--red);
 }
-.queue-options {
-  margin: 0;
-  min-width: 88px;
+#queueMenu {
+  width: 380px;
 }
-.queue-options button {
-  margin: 3px;
+.queue-menu-name {
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
 }
-.queue-parameters,
+.queue-menu-actions {
+  display: grid;
+  gap: 6px;
+}
+.queue-menu-actions button {
+  width: 100%;
+  text-align: left;
+}
+button.queue-remove {
+  color: var(--red);
+  border-color: var(--red);
+}
 .full-job-log {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
